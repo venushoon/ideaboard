@@ -164,15 +164,7 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 @keyframes postIn { from { opacity:0; transform: scale(.9) translateY(10px); } to { opacity:1; transform: scale(1) translateY(0); } }
 .post-it:hover { box-shadow: var(--sh-md); }
 
-/* 🌟 터치 드래그 충돌 방지 핵심 코드 */
-.post-it.dragging { 
-  cursor:grabbing !important; 
-  box-shadow: var(--sh-pop); 
-  transform: scale(1.03) rotate(2deg) !important; 
-  opacity: 0.95; 
-  z-index: 9999 !important;
-  touch-action: none !important; /* 모바일에서 드래그 중 스크롤 일어나는 것 원천 차단 */
-}
+.post-it.dragging { cursor:grabbing !important; box-shadow: var(--sh-pop); transform: scale(1.03) rotate(2deg) !important; opacity: 0.95; z-index: 9999 !important; touch-action: none !important;}
 .post-it.is-dragging-node { opacity: 0.4; } 
 
 .post-top { padding: 12px 16px; display:flex; justify-content:space-between; align-items:center; }
@@ -222,9 +214,13 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 .comment-input { width: 100%; border: 1px solid var(--border); background: rgba(255,255,255,0.9); padding: 10px 14px; border-radius: 100px; font-size: 0.85rem; font-family: inherit; outline: none; transition: 0.2s; flex-shrink: 0;}
 .comment-input:focus { background: white; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft);}
 
-/* FAB */
+/* FAB (메인 작업공간 전용) */
 .fab { position:fixed; bottom:32px; right:32px; width:64px; height:64px; border-radius:50%; background: var(--primary); color: white; border: none; font-size: 2rem; font-weight: bold; cursor: pointer; z-index: 200; box-shadow: 0 4px 15px rgba(153, 27, 27, 0.4); display: flex; align-items: center; justify-content: center; transition: 0.2s var(--ease-spring); }
 .fab:hover { transform: scale(1.1) translateY(-2px); box-shadow: 0 8px 25px rgba(153, 27, 27, 0.5); }
+
+/* 🌟 로비 화면 전용 새 보드 FAB */
+.lobby-fab { position:fixed; bottom:32px; right:32px; width:64px; height:64px; border-radius:50%; background: var(--navy); color: white; border: none; font-size: 2rem; font-weight: bold; cursor: pointer; z-index: 200; box-shadow: 0 4px 15px rgba(30, 58, 138, 0.4); display: flex; align-items: center; justify-content: center; transition: 0.2s var(--ease-spring); }
+.lobby-fab:hover { transform: scale(1.1) translateY(-2px); box-shadow: 0 8px 25px rgba(30, 58, 138, 0.5); }
 
 /* ─────────────────────────────────────────────
    MODALS & SIDEBAR
@@ -282,9 +278,6 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 #qrContainer { text-align: center; margin-top: 24px; display: none;}
 #qrContainer img { border: 10px solid white; border-radius: 12px; box-shadow: var(--sh-md);}
 
-/* ─────────────────────────────────────────────
-   SIDEBAR (관리자 패널)
-───────────────────────────────────────────── */
 .sidebar { position: fixed; top: 0; right: -420px; width: 420px; height: 100%; background: #f9f9f9; box-shadow: -4px 0 30px rgba(0,0,0,0.1); z-index: 1000; transition: right 0.3s var(--ease-spring); display: flex; flex-direction: column; border-left: 1px solid var(--border); }
 .sidebar.open { right: 0; }
 .sb-header { padding: 32px 32px 16px; display: flex; justify-content: space-between; align-items: center; background: transparent;}
@@ -322,3 +315,4 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 #toast { position:fixed; bottom:40px; left:50%; transform: translateX(-50%) translateY(20px); background: rgba(28,25,23,.9); color:#fff; padding: 12px 24px; border-radius:100px; font-size:.95rem; font-weight:800; z-index:9999; opacity:0; pointer-events:none; transition: opacity .2s, transform .2s var(--ease-spring); box-shadow: var(--sh-md);}
 #toast.show { opacity:1; transform: translateX(-50%) translateY(0); }
+</style>
