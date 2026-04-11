@@ -16,15 +16,19 @@
 <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/scroll-behaviour.min.js"></script>
 <script>
     window.addEventListener('DOMContentLoaded', () => {
-        MobileDragDrop.polyfill({ holdToDrag: 200, dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride });
+        MobileDragDrop.polyfill({
+            holdToDrag: 200, 
+            dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
+        });
         window.addEventListener('touchmove', function() {}, {passive: false});
     });
 </script>
+
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div id="loginView" style="display: flex;">
+<div id="loginView" style="display: none;">
     <div class="login-container">
         <h1 class="login-logo">📋 아이디어 보드</h1>
         <p class="login-sub">당신의 교실을 연결하는 가장 완벽한 방법</p>
@@ -326,6 +330,7 @@
 </aside>
 
 <div id="toast"></div>
+
 <script type="module" src="app.js"></script>
 </body>
 </html>
