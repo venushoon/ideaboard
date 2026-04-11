@@ -116,6 +116,7 @@ window.getYoutubeId = function(url) {
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, push, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
+/* 🔥 주의: 선생님의 Firebase 설정값으로 변경해주세요! (개인정보 보호를 위해 마스킹 처리됨) */
 const firebaseConfig = {
   apiKey: "AIzaSyASO0pcnIdlNIFnj_wh8OemymWW66jMH_I",
   authDomain: "learner-board.firebaseapp.com",
@@ -136,14 +137,6 @@ try {
     myName = localStorage.getItem('learner_name') || '';
     likedPosts = JSON.parse(localStorage.getItem('liked_posts') || '{}');
 } catch(e) { console.warn("태블릿 시크릿 모드: 로컬 저장소가 제한됨."); }
-
-if (typeof MobileDragDrop !== 'undefined') {
-    MobileDragDrop.polyfill({
-        holdToDrag: 150, 
-        dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
-    });
-    window.addEventListener('touchmove', function() {}, {passive: false});
-}
 
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
@@ -460,6 +453,7 @@ else {
     el.querySelector('.like-btn').onclick = e => { e.stopPropagation(); window.toggleLike(id); };
     
     el.querySelector('.comment-input').addEventListener('keydown', e => {
+      // 🌟 한글 입력기(IME) 중복 전송 완벽 방지
       if (e.key === 'Enter') {
           e.preventDefault();
           if (e.isComposing || e.keyCode === 229) return; 
@@ -798,7 +792,7 @@ else {
     dragState.el.style.left = x + 'px'; dragState.el.style.top  = y + 'px';
     if (window.currentLayout === 'canvas') {
         update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x, y });
-        window.updateCanvasSize();
+        window.updateCanvasSize(); 
     }
   }
   function onUp (e) {
