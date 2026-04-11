@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>나만의 아이디어 보드 (Ultimate)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Serif+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="lobbyView">
+  <header class="lobby-header">
+    <h1 class="lobby-logo"><span>📋</span>아이디어 보드</h1>
+    <button class="btn-new" onclick="createBoardFromLobby()">+ 새 보드 만들기</button>
+  </header>
+  <div class="lobby-hero">
+    <h2 class="lobby-hero-title">창의적인 아이디어를 한 곳에</h2>
+    <p class="lobby-hero-sub">포스트잇을 붙이고, 의견을 나누고, 함께 키워가요.</p>
+  </div>
+  <main class="lobby-main">
+    <p class="section-label">내 보드 목록</p>
+    <div class="board-grid" id="boardGrid"></div>
+  </main>
+</div>
+
+<div id="appView">
+  <nav class="top-nav">
+    <div class="nav-left">
+      <div class="board-header-info" onclick="openSidebar()" title="보드 정보 수정하기">
+        <h1 class="board-title-text" id="boardTitleText">함께 배움 보드</h1>
+        <p class="board-desc-text" id="boardDescText">설명이 없습니다.</p>
+      </div>
+    </div>
+    <div class="nav-right">
+      <button class="nav-back" onclick="exitToLobby()" title="보드 목록으로">← 목록</button>
+      <button class="btn-share" onclick="openModal('shareModal')">📤 공유</button>
+      <button class="nav-icon-btn" onclick="openSidebar()" title="설정">⚙️</button>
+    </div>
+  </nav>
+
+  <div id="board" data-layout="canvas"></div>
+
+  <button class="fab" onclick="openWriteModal(null)" title="아이디어 남기기">＋</button>
+</div>
+
+<div class="overlay" id="nameModal">
+  <div class="modal-content" style="text-align: center; max-width:400px;">
+    <span style="font-size:3.5rem; display:block; margin-bottom:12px;">👋</span>
+    <h2 style="font-weight:900; font-size: 1.5rem; margin:0 0 8px 0; color: var(--ink);">반가워요!</h2>
+    <p style="color:var(--ink-3); margin-bottom:24px;">보드에서 사용할 이름을 입력해 주세요.</p>
+    <input id="nameInput" class="modal-input" style="text-align:center; font-weight:800; font-size:1.15rem; margin-bottom:24px;" type="text" placeholder="이름 또는 닉네임" onkeydown="if(event.key==='Enter') confirmName()">
+    <button class="btn-primary" style="width:100%; background:var(--primary);" onclick="confirmName()">시작하기</button>
+  </div>
+</div>
+
+<div class="overlay" id="writeModal" onclick="closeBgClick(event,'writeModal')">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="writeModalTitle" style="margin:0;">어떤 아이디어를 나눌까요?</h3>
+      <button class="modal-close" onclick="closeModal('writeModal')">✕</button>
+    </div>
+
+    <div class="field">
+      <label class="field-label">내용</label>
+      <textarea id="postInput" class="modal-textarea" placeholder="자유롭게 의견을 적어주세요…"></textarea>
+    </div>
+    
+    <div class="field">
+      <label class="field-label">파일 첨부</label>
+      <div class="file-upload-wrap">
+          <label class="file-btn" for="fileInput">📎 파일 선택</label>
+          <input type="file" id="fileInput" class="file-input" accept="*/*" onchange="handleFileUpload(event)">
+          <span class="file-name" id="fileNameDisplay">선택된 파일 없음</span>
+      </div>
+      <div class="file-preview-wrap" id="filePreviewWrap">
+          <img src="" id="filePreviewImg" class="file-preview" style="display:none;">
+          <div id="filePreviewFile" class="file-preview-doc" style="display:none;"></div>
+          <button class="file-remove" onclick="removeFile()">✕</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">참고 링크</label>
+      <input id="linkUrlInput" class="modal-input" type="url" placeholder="https://…">
+    </div>
+
+    <div class="color-row" id="colorPicker">
+      <div class="color-opt active" data-color="#ffffff" style="background:#ffffff; border: 1px solid var(--border);"></div>
+      <div class="color-opt" data-color="#fef08a" style="background:#fef08a;"></div>
+      <div class="color-opt" data-color="#a7f3d0" style="background:#a7f3d0;"></div>
+      <div class="color-opt" data-color="#bfdbfe" style="background:#bfdbfe;"></div>
+      <div class="color-opt" data-color="#fbcfe8" style="background:#fbcfe8;"></div>
+      <div class="color-opt" data-color="#e9d5ff" style="background:#e9d5ff;"></div>
+    </div>
+
+    <div class="btn-wrap">
+      <button class="btn btn-cancel" onclick="closeModal('writeModal')">취소</button>
+      <button class="btn btn-submit" style="background:var(--primary);" onclick="submitPost()">게시하기</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="imageViewerModal" onclick="closeBgClick(event,'imageViewerModal')">
+    <div class="viewer-content">
+        <button class="viewer-close" onclick="closeModal('imageViewerModal')">✕</button>
+        <img id="imageViewerImg" src="">
+    </div>
+</div>
+
+<div class="overlay" id="shareModal" onclick="closeBgClick(event,'shareModal')">
+    <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header">
+            <h3 style="margin:0;">📤 이 게시판 공유</h3>
+            <button class="modal-close" onclick="closeModal('shareModal')">✕</button>
+        </div>
+        <div class="share-grid">
+            <div class="share-item" onclick="copyLink()">
+                <div class="share-icon">🔗</div><span class="share-text">링크 복사</span>
+            </div>
+            <div class="share-item" onclick="showQR()">
+                <div class="share-icon">📱</div><span class="share-text">QR 코드</span>
+            </div>
+            <div class="share-item" onclick="downloadImage()">
+                <div class="share-icon">🖼️</div><span class="share-text">이미지로 저장</span>
+            </div>
+            <div class="share-item" onclick="downloadPDF()">
+                <div class="share-icon" id="pdfIconWrap">📄</div><span class="share-text" id="pdfTextWrap">PDF로 저장</span>
+            </div>
+        </div>
+        <div id="qrContainer">
+            <img id="qrImg" src="" alt="QR Code">
+            <p style="font-size:0.85rem; color:var(--ink-3); margin-top:10px;">학생들에게 위 QR코드를 스캔하게 하세요.</p>
+        </div>
+    </div>
+</div>
+
+<div class="sidebar-overlay" id="sbOverlay" onclick="closeSidebar()"></div>
+<aside class="sidebar" id="adminSidebar">
+  <div class="sb-header">
+    <h3 class="sb-title">설정</h3>
+    <button class="modal-close" style="background:transparent;" onclick="closeSidebar()">✕</button>
+  </div>
+  <div class="sidebar-body">
+    
+    <div class="setting-section">
+        <h4 class="setting-section-title">보드 정보</h4>
+        <div class="setting-card">
+            <div class="setting-item-col">
+                <label class="setting-label">제목</label>
+                <input type="text" id="sbTitleInput" class="sb-input" onchange="updateSettings()" placeholder="보드 제목">
+            </div>
+            <div class="setting-item-col">
+                <label class="setting-label">설명</label>
+                <textarea id="sbDescInput" class="sb-input sb-textarea" onchange="updateSettings()" placeholder="설명을 자유롭게 작성해주세요."></textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="setting-section">
+        <h4 class="setting-section-title">모양 및 레이아웃</h4>
+        <div class="setting-card">
+            <div class="setting-item-horiz">
+                <div class="setting-info">
+                    <h4>형식 (Layout)</h4>
+                </div>
+                <select id="layoutSelect" class="form-select-sm" onchange="updateSettings()" style="width:160px;">
+                    <option value="canvas">🎨 캔버스</option>
+                    <option value="wall">🧱 담벼락 (자동 정렬)</option>
+                    <option value="column">🏛️ 컬럼 (섹션 분류)</option>
+                </select>
+            </div>
+            <div class="setting-item-horiz">
+                <div class="setting-info">
+                    <h4>글꼴</h4>
+                </div>
+                <select id="fontSelect" class="form-select-sm" onchange="updateSettings()" style="width:160px;">
+                    <option value="'Pretendard', sans-serif">기본 고딕</option>
+                    <option value="'Gowun Dodum', sans-serif">고운 돋움</option>
+                </select>
+            </div>
+            <div class="setting-item-horiz">
+                <div class="setting-info">
+                    <h4>배경색</h4>
+                </div>
+                <select id="bgSelect" class="form-select-sm" onchange="updateSettings()" style="width:160px;">
+                    <option value="#f9fafb">기본 크림</option>
+                    <option value="#f1f5f9">차분한 회색</option>
+                    <option value="#fdf4ff">파스텔 보라</option>
+                    <option value="#f0fdf4">파스텔 초록</option>
+                    <option value="#f0f9ff">파스텔 스카이</option>
+                    <option value="#111827">다크 모드</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="setting-section">
+      <h4 class="setting-section-title">참여 및 상호작용</h4>
+      <div class="setting-card">
+          <div class="setting-item-horiz">
+            <div class="setting-info">
+              <h4>새 게시물 위치</h4>
+            </div>
+            <select id="postOrderSelect" class="form-select-sm" onchange="updateSettings()" style="width:120px;">
+                <option value="bottom">최하단</option>
+                <option value="top">최상단</option>
+            </select>
+          </div>
+          <div class="setting-item-horiz">
+            <div class="setting-info">
+              <h4>비밀 모드 (익명)</h4>
+            </div>
+            <label class="toggle-switch"><input type="checkbox" id="anonToggle" onchange="updateSettings()"><span class="slider"></span></label>
+          </div>
+          <div class="setting-item-horiz">
+            <div class="setting-info">
+              <h4>댓글</h4>
+            </div>
+            <label class="toggle-switch"><input type="checkbox" id="commentToggle" onchange="updateSettings()" checked><span class="slider"></span></label>
+          </div>
+          <div class="setting-item-horiz">
+                <div class="setting-info">
+                    <h4>반응 (리액션)</h4>
+                </div>
+                <select id="reactionSelect" class="form-select-sm" onchange="updateSettings()" style="width:120px;">
+                    <option value="like">❤️ 좋아요</option>
+                    <option value="thumb">👍 최고</option>
+                    <option value="star">⭐ 별점</option>
+                    <option value="none">🚫 없음</option>
+                </select>
+          </div>
+      </div>
+    </div>
+
+    <button class="btn-danger" onclick="clearBoard()">🗑️ 게시물 전체 삭제 및 초기화</button>
+  </div>
+</aside>
+
+<div id="toast"></div>
+
+<script type="module" src="app.js"></script>
+
+</body>
+</html>
