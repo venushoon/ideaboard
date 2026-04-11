@@ -63,12 +63,21 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 .section-label::after { content:''; flex:1; height:1px; background: var(--line); }
 .board-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 24px; }
 
-/* 🌟 보드 카드 개별 삭제 버튼 스타일 추가 */
+/* 보드 카드 개별 삭제 버튼 스타일 */
 .board-card { position: relative; background: #fff; border-radius: var(--r-md); border: 1px solid var(--line); cursor: pointer; overflow: hidden; transition: 0.2s; display: flex; flex-direction: column; }
 .board-card:hover { transform: translateY(-4px); box-shadow: var(--sh-md); border-color: var(--primary); }
 .board-delete-btn { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.5); color: white; border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s, background 0.2s; z-index: 10; backdrop-filter: blur(4px); }
 .board-card:hover .board-delete-btn { opacity: 1; }
 .board-delete-btn:hover { background: var(--accent); transform: scale(1.1); }
+
+/* 🌟 휴지통 전용 스타일 */
+.trash-card { opacity: 0.6; filter: grayscale(50%); cursor: default;}
+.trash-card:hover { transform: none; box-shadow: none; border-color: var(--line); opacity: 0.9;}
+.trash-actions { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); background: var(--cream);}
+.btn-restore { flex: 1; background: var(--go); color: white; border: none; padding: 8px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.85rem; transition: 0.2s;}
+.btn-hard-del { flex: 1; background: var(--accent); color: white; border: none; padding: 8px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.85rem; transition: 0.2s;}
+.btn-restore:hover { filter: brightness(1.1); }
+.btn-hard-del:hover { filter: brightness(1.1); }
 
 .board-thumb { width:100%; height:140px; object-fit:cover; border-bottom: 1px solid var(--line); background: #f3f4f6;}
 .board-thumb-empty { height:140px; background: repeating-linear-gradient(45deg, #f8fafc, #f8fafc 10px, #f1f5f9 10px, #f1f5f9 20px); display:flex; align-items:center; justify-content:center; font-size: 2.5rem; border-bottom: 1px solid var(--line); color: #cbd5e1;}
@@ -116,13 +125,8 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 #board[data-layout="canvas"] .post-img { max-height: 150px; }
 
 /* 2. Wall (JS Masonry) */
-#board[data-layout="wall"] {
-  display: block; padding: 0; overflow-y: auto !important; overflow-x: hidden !important; height: 100vh; touch-action: pan-y !important;
-}
-#board[data-layout="wall"] .post-it { 
-  position: absolute !important; transform: none !important; width: 280px !important; cursor: grab; margin: 0 !important;
-  transition: left 0.3s var(--ease-spring), top 0.3s var(--ease-spring), box-shadow 0.15s;
-}
+#board[data-layout="wall"] { display: block; padding: 0; overflow-y: auto !important; overflow-x: hidden !important; height: 100vh; touch-action: pan-y !important;}
+#board[data-layout="wall"] .post-it { position: absolute !important; transform: none !important; width: 280px !important; cursor: grab; margin: 0 !important; transition: left 0.3s var(--ease-spring), top 0.3s var(--ease-spring), box-shadow 0.15s; }
 
 /* 3. Column */
 #board[data-layout="column"] { display: flex; flex-direction: row; gap: 24px; align-items: flex-start; padding: 130px 32px 40px; overflow-x: auto; overflow-y: hidden; height: 100vh; }
@@ -269,6 +273,9 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 #qrContainer { text-align: center; margin-top: 24px; display: none;}
 #qrContainer img { border: 10px solid white; border-radius: 12px; box-shadow: var(--sh-md);}
 
+/* ─────────────────────────────────────────────
+   SIDEBAR (관리자 패널)
+───────────────────────────────────────────── */
 .sidebar { position: fixed; top: 0; right: -420px; width: 420px; height: 100%; background: #f9f9f9; box-shadow: -4px 0 30px rgba(0,0,0,0.1); z-index: 1000; transition: right 0.3s var(--ease-spring); display: flex; flex-direction: column; border-left: 1px solid var(--border); }
 .sidebar.open { right: 0; }
 .sb-header { padding: 32px 32px 16px; display: flex; justify-content: space-between; align-items: center; background: transparent;}
