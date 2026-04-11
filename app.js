@@ -1,10 +1,9 @@
 /* ─────────────────────────────────────────────
-   🌟 1. 전역 안전장치 및 유틸리티 (에러 원천 차단)
-   (Firebase 데이터가 아무리 빨리 들어와도 에러가 나지 않도록 최상단에 배치)
+   🌟 1. 전역 안전장치 및 유틸리티 
 ───────────────────────────────────────────── */
 window.getInitials = name => (name || '?').charAt(0).toUpperCase();
 window.escapeHtml  = str => str ? String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '';
-window.applyMasonry = () => {}; // 이미지 빠른 로딩 시 참조 에러 방지용 빈 함수
+window.applyMasonry = () => {}; 
 window.updateCanvasSize = () => {}; 
 window.currentLayout = 'canvas';
 
@@ -130,7 +129,14 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-// 🌟 터치 기기용 드래그 앤 드롭 폴리필 활성화 (태블릿/전자칠판 지원)
+// 🌟 태블릿 로컬 스토리지 에러 우회
+let myName = '';
+let likedPosts = {};
+try {
+    myName = localStorage.getItem('learner_name') || '';
+    likedPosts = JSON.parse(localStorage.getItem('liked_posts') || '{}');
+} catch(e) { console.warn("태블릿 시크릿 모드: 로컬 저장소가 제한됨."); }
+
 if (typeof MobileDragDrop !== 'undefined') {
     MobileDragDrop.polyfill({
         holdToDrag: 150, 
@@ -142,10 +148,10 @@ if (typeof MobileDragDrop !== 'undefined') {
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
-// 🌟 로비 휴지통 기능
+// 🌟 15일 휴지통 로직
 window.deleteBoard = (boardId, e) => {
     e.stopPropagation();
-    if (confirm('이 보드를 휴지통으로 이동할까요? (3일 후 완전히 삭제됩니다)')) {
+    if (confirm('이 보드를 휴지통으로 이동할까요? (15일 후 완전히 삭제됩니다)')) {
         update(ref(db, `board_meta/${boardId}`), { deletedAt: Date.now() });
         window.showToast('휴지통으로 이동되었습니다.');
     }
@@ -166,7 +172,6 @@ window.hardDeleteBoard = (boardId, e) => {
     }
 };
 
-// ── 로비(보드 목록) 렌더링 ──
 if (!currentBoardId) {
   document.getElementById('appView').style.display  = 'none';
   document.getElementById('lobbyView').style.display = 'flex';
@@ -185,9 +190,9 @@ if (!currentBoardId) {
     const boards = Object.keys(data).map(k => ({ id: k, ...data[k] })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
     boards.forEach(b => {
-      // 휴지통 로직 (3일=259200000ms 보관 후 삭제)
+      // 🌟 15일 지난 보드 완전 삭제 (15 * 24시간 * 60분 * 60초 * 1000ms)
       if (b.deletedAt) {
-          if (now - b.deletedAt > 3 * 24 * 60 * 60 * 1000) {
+          if (now - b.deletedAt > 15 * 24 * 60 * 60 * 1000) {
               remove(ref(db, `boards/${b.id}`));
               remove(ref(db, `board_meta/${b.id}`));
               return; 
@@ -208,7 +213,6 @@ if (!currentBoardId) {
           `;
           trashGrid.appendChild(card);
       } else {
-          // 활성 보드 렌더링
           const card = document.createElement('div'); card.className = 'board-card';
           const thumb = b.thumb ? `<img src="${b.thumb}" class="board-thumb" alt="">` : `<div class="board-thumb-empty">📝</div>`;
           const date = b.updatedAt ? new Date(b.updatedAt).toLocaleString('ko-KR', { dateStyle:'short', timeStyle:'short' }) : '–';
@@ -234,7 +238,6 @@ if (!currentBoardId) {
     if (name?.trim()) { window.location.hash = `board=${encodeURIComponent(name.trim())}`; window.location.reload(); }
   };
 } 
-// ── 보드 내부(작업 공간) 렌더링 ──
 else {
   document.getElementById('lobbyView').style.display = 'none';
   document.getElementById('appView').style.display   = 'flex';
@@ -244,9 +247,8 @@ else {
   const columnsRef  = ref(db, `boards/${currentBoardId}/columns`);
   const metaRef     = ref(db, `board_meta/${currentBoardId}`);
 
-  let myName         = localStorage.getItem('learner_name') || '';
-  let likedPosts     = JSON.parse(localStorage.getItem('liked_posts') || '{}');
   let isAnonMode     = false;
+  let currentLayout  = 'canvas';
   let reactionType   = 'like'; 
   
   let currentColId   = null;   
@@ -257,7 +259,6 @@ else {
   let localPosts     = {};     
   let localColEls    = {};     
 
-  /* ── 🌟 완벽한 JS Masonry 핀터레스트 로직 ── */
   window.applyMasonry = () => {
       if (window.currentLayout !== 'wall') return;
       const board = document.getElementById('board');
@@ -294,7 +295,7 @@ else {
       spacer.style.top = `${Math.max(...colHeights) + 80}px`; 
   };
 
-  /* ── 🌟 캔버스 모드 짤림 방지 (동적 확장) ── */
+  // 🌟 캔버스 모드 잘림 방지 로직 보강
   window.updateCanvasSize = () => {
       if (window.currentLayout !== 'canvas') {
           document.getElementById('board').style.minWidth = '100vw';
@@ -333,7 +334,9 @@ else {
   }
   window.confirmName = () => {
     const v = document.getElementById('nameInput').value.trim();
-    if (!v) return; myName = v; localStorage.setItem('learner_name', myName); window.closeModal('nameModal');
+    if (!v) return; myName = v; 
+    try { localStorage.setItem('learner_name', myName); } catch(e) {}
+    window.closeModal('nameModal');
   };
   ensureName();
 
@@ -456,7 +459,6 @@ else {
     el.querySelector('.edit').onclick = e => { e.stopPropagation(); window.editPost(id); };
     el.querySelector('.like-btn').onclick = e => { e.stopPropagation(); window.toggleLike(id); };
     
-    // 한글 입력 이중 전송 방지 로직
     el.querySelector('.comment-input').addEventListener('keydown', e => {
       if (e.key === 'Enter') {
           e.preventDefault();
@@ -744,7 +746,8 @@ else {
     
     const cur = allPostsData[id]?.likes || 0;
     update(ref(db, `boards/${currentBoardId}/posts/${id}`), { likes: cur + 1 });
-    likedPosts[id] = true; localStorage.setItem('liked_posts', JSON.stringify(likedPosts));
+    likedPosts[id] = true; 
+    try { localStorage.setItem('liked_posts', JSON.stringify(likedPosts)); } catch(e){}
   };
   
   window.addComment = (id, text, inputEl) => { push(ref(db, `boards/${currentBoardId}/posts/${id}/comments`), { author: myName, text, timestamp: Date.now() }); };
