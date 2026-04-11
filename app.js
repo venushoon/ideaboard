@@ -137,14 +137,6 @@ try {
     likedPosts = JSON.parse(localStorage.getItem('liked_posts') || '{}');
 } catch(e) { console.warn("태블릿 시크릿 모드: 로컬 저장소가 제한됨."); }
 
-if (typeof MobileDragDrop !== 'undefined') {
-    MobileDragDrop.polyfill({
-        holdToDrag: 150, 
-        dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
-    });
-    window.addEventListener('touchmove', function() {}, {passive: false});
-}
-
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
@@ -269,6 +261,7 @@ if (!currentBoardId) {
     const boards = Object.keys(data).map(k => ({ id: k, ...data[k] })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
     boards.forEach(b => {
+      // 🌟 15일 지난 보드 완전 삭제 (15 * 24시간 * 60분 * 60초 * 1000ms)
       if (b.deletedAt) {
           if (now - b.deletedAt > 15 * 24 * 60 * 60 * 1000) {
               remove(ref(db, `boards/${b.id}`));
@@ -565,6 +558,7 @@ else {
     el.addEventListener('dragover', (e) => e.preventDefault());
     el.addEventListener('drop', (e) => handleDropOnWall(e, id)); 
     
+    // 🌟 터치 기기용 캡처 로직 등록
     el.addEventListener('pointerdown', e => {
         if(window.currentLayout === 'canvas') startFreeDrag(e, id, el);
     });
@@ -860,38 +854,42 @@ else {
     window.location.href = window.location.href.split('?')[0].split('#')[0];
   };
 
-  // 🌟 캔버스 모드 스마트 오토 스크롤 엔진 🌟
-  const dragState = { id: null, offsetX: 0, offsetY: 0, el: null };
+  /* ── 🌟 캔버스 모드 스마트 오토 스크롤 엔진 (터치 에러 완벽 픽스) ── */
+  const dragState = { id: null, offsetX: 0, offsetY: 0, el: null, pointerId: null };
   let autoScrollRAF = null;
-  const ptrPos = { x: 0, y: 0 }; // 실시간 마우스/터치 좌표 추적
+  const ptrPos = { x: 0, y: 0 }; 
 
   function updateDragElementPosition() {
       if (!dragState.el) return;
       const boardEl = document.getElementById('board');
+      const boardRect = boardEl.getBoundingClientRect(); // 브라우저 창 내 보드의 실제 위치
       
-      const x = ptrPos.x - dragState.offsetX + boardEl.scrollLeft;
-      const y = ptrPos.y - dragState.offsetY + boardEl.scrollTop;
+      // 🌟 스크롤 값과 보드 위치를 정확히 합산하여 계산
+      const x = ptrPos.x - dragState.offsetX - boardRect.left + boardEl.scrollLeft;
+      const y = ptrPos.y - dragState.offsetY - boardRect.top + boardEl.scrollTop;
       
       dragState.el.style.left = x + 'px';
       dragState.el.style.top  = y + 'px';
-      window.updateCanvasSize(); // 즉각적인 무한 확장
+      window.updateCanvasSize(); // 드래그 즉시 화면 팽창
   }
 
   function autoScrollLoop() {
       if (!dragState.id) return;
       
-      const EDGE = 80; // 화면 끝 80px 내에 진입하면 스크롤 발동
-      const SPEED = 15; // 스크롤 속도
+      const EDGE = 80; 
+      const SPEED = 15; 
       let isScrolling = false;
 
-      // 윈도우 스크롤 방식 적용 (브라우저 창 자체를 스크롤)
-      if (ptrPos.x > window.innerWidth - EDGE) { window.scrollBy(SPEED, 0); isScrolling = true; }
-      else if (ptrPos.x < EDGE) { window.scrollBy(-SPEED, 0); isScrolling = true; }
+      const boardEl = document.getElementById('board');
+      const boardRect = boardEl.getBoundingClientRect();
 
-      if (ptrPos.y > window.innerHeight - EDGE) { window.scrollBy(0, SPEED); isScrolling = true; }
-      else if (ptrPos.y < EDGE) { window.scrollBy(0, -SPEED); isScrolling = true; }
+      // 🌟 브라우저 창(window)이 아닌, 실제 스크롤 영역(boardEl)을 밀어냄
+      if (ptrPos.x > boardRect.right - EDGE) { boardEl.scrollBy(SPEED, 0); isScrolling = true; }
+      else if (ptrPos.x < boardRect.left + EDGE) { boardEl.scrollBy(-SPEED, 0); isScrolling = true; }
 
-      // 스크롤이 일어날 때마다 포스트잇의 실제 좌표도 보정
+      if (ptrPos.y > boardRect.bottom - EDGE) { boardEl.scrollBy(0, SPEED); isScrolling = true; }
+      else if (ptrPos.y < boardRect.top + EDGE) { boardEl.scrollBy(0, -SPEED); isScrolling = true; }
+
       if (isScrolling) {
           updateDragElementPosition();
       }
@@ -903,8 +901,12 @@ else {
     if (window.currentLayout !== 'canvas') return; 
     if (e.target.closest('.delete-btn,.edit-btn,.like-btn,.comment-input,.post-link,.post-img,.post-file,.yt-thumb-wrap')) return;
 
-    dragState.id = id; dragState.el = el;
+    dragState.id = id; 
+    dragState.el = el;
+    dragState.pointerId = e.pointerId; 
+
     const rect = el.getBoundingClientRect();
+    // 터치한 곳과 포스트잇 모서리 간의 차이
     dragState.offsetX = e.clientX - rect.left;
     dragState.offsetY = e.clientY - rect.top;
 
@@ -915,13 +917,12 @@ else {
     el.classList.add('dragging');
     document.body.classList.add('is-dragging');
 
-    // 모바일 터치 포커스 캡처
-    try { el.setPointerCapture(e.pointerId); } catch(e){}
+    try { el.setPointerCapture(dragState.pointerId); } catch(e){}
 
     document.addEventListener('pointermove', onMove, { passive: false });
     document.addEventListener('pointerup', onUp, { once: true });
-    
-    // 자동 스크롤 루프 시작
+    document.addEventListener('pointercancel', onUp, { once: true });
+
     autoScrollRAF = requestAnimationFrame(autoScrollLoop);
   }
   
@@ -936,15 +937,13 @@ else {
     if (!dragState.id) return;
     const el = dragState.el;
     
-    // 자동 스크롤 정지
     cancelAnimationFrame(autoScrollRAF);
 
-    // 딱 1번만 Firebase 서버에 전송
     const finalX = parseFloat(el.style.left) || 80;
     const finalY = parseFloat(el.style.top) || 80;
     update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x: finalX, y: finalY });
 
-    try { el.releasePointerCapture(e.pointerId); } catch(e){}
+    try { el.releasePointerCapture(dragState.pointerId); } catch(e){}
     
     el.classList.remove('dragging');
     el.style.zIndex = '';
@@ -952,6 +951,7 @@ else {
     
     dragState.id = null; dragState.el = null;
     document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointercancel', onUp);
   }
 
   function handleDragStart(e, id) {
