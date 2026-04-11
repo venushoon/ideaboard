@@ -261,7 +261,6 @@ if (!currentBoardId) {
     const boards = Object.keys(data).map(k => ({ id: k, ...data[k] })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
     boards.forEach(b => {
-      // 🌟 15일 지난 보드 완전 삭제 (15 * 24시간 * 60분 * 60초 * 1000ms)
       if (b.deletedAt) {
           if (now - b.deletedAt > 15 * 24 * 60 * 60 * 1000) {
               remove(ref(db, `boards/${b.id}`));
@@ -365,7 +364,7 @@ else {
       spacer.style.top = `${Math.max(...colHeights) + 80}px`; 
   };
 
-  // 🌟 캔버스 모드 무한 자동 확장
+  // 🌟 캔버스 모드 무한 자동 확장 (터치 스크롤 지원 적용)
   window.updateCanvasSize = () => {
       if (window.currentLayout !== 'canvas') {
           const spacer = document.getElementById('canvas-spacer');
@@ -558,7 +557,6 @@ else {
     el.addEventListener('dragover', (e) => e.preventDefault());
     el.addEventListener('drop', (e) => handleDropOnWall(e, id)); 
     
-    // 🌟 터치 기기용 캡처 로직 등록
     el.addEventListener('pointerdown', e => {
         if(window.currentLayout === 'canvas') startFreeDrag(e, id, el);
     });
@@ -876,19 +874,19 @@ else {
   function autoScrollLoop() {
       if (!dragState.id) return;
       
-      const EDGE = 80; 
+      const EDGE = 100; // 가장자리 인식 범위를 100px로 늘려 모바일 터치 편의성 증가
       const SPEED = 15; 
       let isScrolling = false;
 
       const boardEl = document.getElementById('board');
       const boardRect = boardEl.getBoundingClientRect();
 
-      // 🌟 브라우저 창(window)이 아닌, 실제 스크롤 영역(boardEl)을 밀어냄
-      if (ptrPos.x > boardRect.right - EDGE) { boardEl.scrollBy(SPEED, 0); isScrolling = true; }
-      else if (ptrPos.x < boardRect.left + EDGE) { boardEl.scrollBy(-SPEED, 0); isScrolling = true; }
+      // 🌟 브라우저 창(window)이 아닌, 실제 스크롤 영역(boardEl)을 밀어냄 (태블릿 먹통 해결의 핵심)
+      if (ptrPos.x > boardRect.right - EDGE) { boardEl.scrollLeft += SPEED; isScrolling = true; }
+      else if (ptrPos.x < boardRect.left + EDGE) { boardEl.scrollLeft -= SPEED; isScrolling = true; }
 
-      if (ptrPos.y > boardRect.bottom - EDGE) { boardEl.scrollBy(0, SPEED); isScrolling = true; }
-      else if (ptrPos.y < boardRect.top + EDGE) { boardEl.scrollBy(0, -SPEED); isScrolling = true; }
+      if (ptrPos.y > boardRect.bottom - EDGE) { boardEl.scrollTop += SPEED; isScrolling = true; }
+      else if (ptrPos.y < boardRect.top + EDGE) { boardEl.scrollTop -= SPEED; isScrolling = true; }
 
       if (isScrolling) {
           updateDragElementPosition();
@@ -917,6 +915,7 @@ else {
     el.classList.add('dragging');
     document.body.classList.add('is-dragging');
 
+    // 모바일 터치 포커스 캡처
     try { el.setPointerCapture(dragState.pointerId); } catch(e){}
 
     document.addEventListener('pointermove', onMove, { passive: false });
@@ -937,13 +936,15 @@ else {
     if (!dragState.id) return;
     const el = dragState.el;
     
+    // 자동 스크롤 정지
     cancelAnimationFrame(autoScrollRAF);
 
+    // 딱 1번만 Firebase 서버에 전송
     const finalX = parseFloat(el.style.left) || 80;
     const finalY = parseFloat(el.style.top) || 80;
     update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x: finalX, y: finalY });
 
-    try { el.releasePointerCapture(dragState.pointerId); } catch(e){}
+    try { el.releasePointerCapture(e.pointerId); } catch(e){}
     
     el.classList.remove('dragging');
     el.style.zIndex = '';
