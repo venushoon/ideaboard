@@ -125,6 +125,16 @@ const db  = getDatabase(app);
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
+// 🌟 개별 보드 삭제 기능 (전역 스코프 등록)
+window.deleteBoard = (boardId, e) => {
+    e.stopPropagation(); // 클릭 시 보드로 입장하는 것 방지
+    if (confirm('이 보드와 안의 모든 게시물을 완전히 삭제하시겠습니까? 삭제 시 복구할 수 없습니다.')) {
+        remove(ref(db, `boards/${boardId}`));
+        remove(ref(db, `board_meta/${boardId}`));
+        window.showToast('보드가 삭제되었습니다.');
+    }
+};
+
 if (!currentBoardId) {
   document.getElementById('appView').style.display  = 'none';
   document.getElementById('lobbyView').style.display = 'flex';
@@ -139,7 +149,16 @@ if (!currentBoardId) {
       const card = document.createElement('div'); card.className = 'board-card';
       const thumb = b.thumb ? `<img src="${b.thumb}" class="board-thumb" alt="">` : `<div class="board-thumb-empty">📝</div>`;
       const date = b.updatedAt ? new Date(b.updatedAt).toLocaleString('ko-KR', { dateStyle:'short', timeStyle:'short' }) : '–';
-      card.innerHTML = `${thumb}<div class="board-info"><h3 class="board-name">${b.title || b.id}</h3><p class="board-date">최근 활동: ${date}</p></div>`;
+      
+      // 🌟 개별 삭제 휴지통 버튼 추가
+      card.innerHTML = `
+        ${thumb}
+        <button class="board-delete-btn" title="보드 삭제" onclick="window.deleteBoard('${b.id}', event)">🗑️</button>
+        <div class="board-info">
+          <h3 class="board-name">${b.title || b.id}</h3>
+          <p class="board-date">최근 활동: ${date}</p>
+        </div>
+      `;
       
       card.onclick = () => { window.location.hash = `board=${b.id}`; window.location.reload(); };
       grid.appendChild(card);
@@ -339,16 +358,15 @@ else {
     el.querySelector('.edit').onclick = e => { e.stopPropagation(); window.editPost(id); };
     el.querySelector('.like-btn').onclick = e => { e.stopPropagation(); window.toggleLike(id); };
     
-    // 🌟 한글 입력기(IME) 중복 전송 방지 로직 (완벽 개선)
     el.querySelector('.comment-input').addEventListener('keydown', e => {
+      // 🌟 한글 입력기(IME) 중복 전송 완벽 방지
       if (e.key === 'Enter') {
           e.preventDefault();
-          // 조합 중이거나 코드가 229(조합중)인 경우 무시
           if (e.isComposing || e.keyCode === 229) return; 
           
           const text = e.target.value.trim();
           if (text) {
-              e.target.value = ''; // 입력창 즉시 초기화하여 이중 트리거 원천 차단
+              e.target.value = ''; 
               window.addComment(id, text, e.target);
           }
       }
