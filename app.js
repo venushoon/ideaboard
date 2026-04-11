@@ -122,16 +122,39 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
+// 🌟 터치 기기용 드래그 앤 드롭 폴리필 활성화 (태블릿/전자칠판 호환)
+if (typeof MobileDragDrop !== 'undefined') {
+    MobileDragDrop.polyfill({
+        holdToDrag: 150, // 0.15초 꾹 누르면 드래그 시작
+        dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
+    });
+    window.addEventListener('touchmove', function() {}, {passive: false});
+}
+
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
-// 🌟 개별 보드 삭제 기능 (전역 스코프 등록)
+// 🌟 1. 휴지통 관련 함수 추가
 window.deleteBoard = (boardId, e) => {
-    e.stopPropagation(); // 클릭 시 보드로 입장하는 것 방지
-    if (confirm('이 보드와 안의 모든 게시물을 완전히 삭제하시겠습니까? 삭제 시 복구할 수 없습니다.')) {
+    e.stopPropagation();
+    if (confirm('이 보드를 휴지통으로 이동할까요? (3일 후 완전히 삭제됩니다)')) {
+        update(ref(db, `board_meta/${boardId}`), { deletedAt: Date.now() });
+        window.showToast('휴지통으로 이동되었습니다.');
+    }
+};
+
+window.restoreBoard = (boardId, e) => {
+    e.stopPropagation();
+    update(ref(db, `board_meta/${boardId}`), { deletedAt: null });
+    window.showToast('보드가 복구되었습니다.');
+};
+
+window.hardDeleteBoard = (boardId, e) => {
+    e.stopPropagation();
+    if (confirm('영구 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
         remove(ref(db, `boards/${boardId}`));
         remove(ref(db, `board_meta/${boardId}`));
-        window.showToast('보드가 삭제되었습니다.');
+        window.showToast('보드가 완전히 삭제되었습니다.');
     }
 };
 
@@ -140,29 +163,61 @@ if (!currentBoardId) {
   document.getElementById('lobbyView').style.display = 'flex';
 
   onValue(ref(db, 'board_meta'), snap => {
-    const data  = snap.val() || {}; const grid  = document.getElementById('boardGrid');
+    const data  = snap.val() || {}; 
+    const grid  = document.getElementById('boardGrid');
+    const trashGrid = document.getElementById('trashGrid');
+    const trashSection = document.getElementById('trashSection');
+    
+    grid.innerHTML = '';
+    trashGrid.innerHTML = '';
+    
+    let hasTrash = false;
+    const now = Date.now();
     const boards = Object.keys(data).map(k => ({ id: k, ...data[k] })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
-    if (!boards.length) return;
-    grid.innerHTML = '';
     boards.forEach(b => {
-      const card = document.createElement('div'); card.className = 'board-card';
-      const thumb = b.thumb ? `<img src="${b.thumb}" class="board-thumb" alt="">` : `<div class="board-thumb-empty">📝</div>`;
-      const date = b.updatedAt ? new Date(b.updatedAt).toLocaleString('ko-KR', { dateStyle:'short', timeStyle:'short' }) : '–';
-      
-      // 🌟 개별 삭제 휴지통 버튼 추가
-      card.innerHTML = `
-        ${thumb}
-        <button class="board-delete-btn" title="보드 삭제" onclick="window.deleteBoard('${b.id}', event)">🗑️</button>
-        <div class="board-info">
-          <h3 class="board-name">${b.title || b.id}</h3>
-          <p class="board-date">최근 활동: ${date}</p>
-        </div>
-      `;
-      
-      card.onclick = () => { window.location.hash = `board=${b.id}`; window.location.reload(); };
-      grid.appendChild(card);
+      // 🌟 3일 보관 로직
+      if (b.deletedAt) {
+          if (now - b.deletedAt > 3 * 24 * 60 * 60 * 1000) {
+              remove(ref(db, `boards/${b.id}`));
+              remove(ref(db, `board_meta/${b.id}`));
+              return; // 3일 지나면 자동 영구 삭제
+          }
+          
+          hasTrash = true;
+          const card = document.createElement('div'); 
+          card.className = 'board-card trash-card';
+          card.innerHTML = `
+            <div style="padding: 16px;">
+                <h3 class="board-name">🗑️ ${window.escapeHtml(b.title || b.id)}</h3>
+                <p class="board-date">삭제일: ${new Date(b.deletedAt).toLocaleDateString()}</p>
+            </div>
+            <div class="trash-actions">
+                <button class="btn-restore" onclick="window.restoreBoard('${b.id}', event)">복구</button>
+                <button class="btn-hard-del" onclick="window.hardDeleteBoard('${b.id}', event)">영구삭제</button>
+            </div>
+          `;
+          trashGrid.appendChild(card);
+      } else {
+          // 활성 보드 렌더링
+          const card = document.createElement('div'); card.className = 'board-card';
+          const thumb = b.thumb ? `<img src="${b.thumb}" class="board-thumb" alt="">` : `<div class="board-thumb-empty">📝</div>`;
+          const date = b.updatedAt ? new Date(b.updatedAt).toLocaleString('ko-KR', { dateStyle:'short', timeStyle:'short' }) : '–';
+          
+          card.innerHTML = `
+            ${thumb}
+            <button class="board-delete-btn" title="휴지통으로 이동" onclick="window.deleteBoard('${b.id}', event)">🗑️</button>
+            <div class="board-info">
+              <h3 class="board-name">${window.escapeHtml(b.title || b.id)}</h3>
+              <p class="board-date">최근 활동: ${date}</p>
+            </div>
+          `;
+          card.onclick = () => { window.location.hash = `board=${b.id}`; window.location.reload(); };
+          grid.appendChild(card);
+      }
     });
+    
+    trashSection.style.display = hasTrash ? 'block' : 'none';
   });
 
   window.createBoardFromLobby = () => {
@@ -193,7 +248,6 @@ else {
   let localPosts     = {};     
   let localColEls    = {};     
 
-  /* ── 🌟 완벽한 JS Masonry 핀터레스트 로직 (전역 등록) ── */
   window.applyMasonry = () => {
       if (window.currentLayout !== 'wall') return;
       const board = document.getElementById('board');
@@ -230,8 +284,38 @@ else {
       spacer.style.top = `${Math.max(...colHeights) + 80}px`; 
   };
 
+  // 🌟 3. 캔버스 짤림 방지 (동적 크기 확장)
+  window.updateCanvasSize = () => {
+      if (window.currentLayout !== 'canvas') {
+          document.getElementById('board').style.minWidth = '100vw';
+          document.getElementById('board').style.minHeight = '100vh';
+          return;
+      }
+      
+      let maxX = window.innerWidth;
+      let maxY = window.innerHeight;
+      
+      Object.keys(allPostsData).forEach(id => {
+          const p = allPostsData[id];
+          if (p.x && p.x + 350 > maxX) maxX = p.x + 350;
+          if (p.y && p.y + 350 > maxY) maxY = p.y + 350;
+      });
+
+      if (dragState.el) {
+          const dragX = parseFloat(dragState.el.style.left) || 0;
+          const dragY = parseFloat(dragState.el.style.top) || 0;
+          if (dragX + 350 > maxX) maxX = dragX + 350;
+          if (dragY + 350 > maxY) maxY = dragY + 350;
+      }
+
+      const board = document.getElementById('board');
+      board.style.minWidth = maxX + 'px';
+      board.style.minHeight = maxY + 'px';
+  };
+
   window.addEventListener('resize', () => {
       if (window.currentLayout === 'wall') window.applyMasonry();
+      else if (window.currentLayout === 'canvas') window.updateCanvasSize();
   });
 
   function ensureName () {
@@ -243,7 +327,7 @@ else {
   };
   ensureName();
 
-  update(metaRef, { updatedAt: Date.now() });
+  update(metaRef, { updatedAt: Date.now(), deletedAt: null });
 
   onValue(settingsRef, snap => {
     const s = snap.val() || {};
@@ -290,9 +374,14 @@ else {
     document.getElementById('board').setAttribute('data-layout', currentLayout);
     document.getElementById('layoutSelect').value = currentLayout;
 
+    // 🌟 레이아웃 변경 시 드래그 속성 동기화
+    document.querySelectorAll('.post-it').forEach(el => {
+        el.draggable = (currentLayout !== 'canvas');
+    });
+
     updateAllReactionsIcon();
 
-    if(layoutChanged) { renderColumns(); renderPostsOrder(); }
+    if(layoutChanged) { renderColumns(); renderPostsOrder(); window.updateCanvasSize(); }
   });
 
   onValue(columnsRef, snap => {
@@ -310,6 +399,7 @@ else {
     });
     
     renderPostsOrder();
+    if(window.currentLayout === 'canvas') window.updateCanvasSize();
   });
 
   function getReactionIcon(type) {
@@ -359,11 +449,9 @@ else {
     el.querySelector('.like-btn').onclick = e => { e.stopPropagation(); window.toggleLike(id); };
     
     el.querySelector('.comment-input').addEventListener('keydown', e => {
-      // 🌟 한글 입력기(IME) 중복 전송 완벽 방지
       if (e.key === 'Enter') {
           e.preventDefault();
           if (e.isComposing || e.keyCode === 229) return; 
-          
           const text = e.target.value.trim();
           if (text) {
               e.target.value = ''; 
@@ -372,7 +460,8 @@ else {
       }
     });
     
-    el.draggable = true;
+    // 🌟 캔버스 모드에서는 순수 터치용 드래그, 그 외엔 HTML5 드래그(폴리필) 작동
+    el.draggable = (window.currentLayout !== 'canvas');
     el.addEventListener('dragstart', (e) => handleDragStart(e, id));
     el.addEventListener('dragend', handleDragEnd);
     el.addEventListener('dragover', (e) => e.preventDefault());
@@ -389,7 +478,7 @@ else {
 
     let html = '';
     if(p.fileData) {
-        if(p.fileData.isImage) html += `<img src="${p.fileData.url}" class="post-img" alt="첨부이미지" onload="if(window.applyMasonry) window.applyMasonry()" onclick="window.openImageViewer('${p.fileData.url}')">`;
+        if(p.fileData.isImage) html += `<img src="${p.fileData.url}" class="post-img" alt="첨부이미지" onload="if(window.applyMasonry) window.applyMasonry(); window.updateCanvasSize();" onclick="window.openImageViewer('${p.fileData.url}')">`;
         else html += `<a href="${p.fileData.url}" download="${p.fileData.name}" class="post-file">📁 ${p.fileData.name}</a>`;
     }
     
@@ -696,7 +785,10 @@ else {
     const y = e.clientY - dragState.offsetY + boardEl.scrollTop;
     
     dragState.el.style.left = x + 'px'; dragState.el.style.top  = y + 'px';
-    if (window.currentLayout === 'canvas') update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x, y });
+    if (window.currentLayout === 'canvas') {
+        update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x, y });
+        window.updateCanvasSize(); // 🌟 드래그 중 실시간 캔버스 확장
+    }
   }
   function onUp (e) {
     if (!dragState.id) return;
