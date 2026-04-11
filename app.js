@@ -17,36 +17,36 @@ window.closeModal = id => {
   setTimeout(() => { el.style.display = 'none'; }, 220);
 };
 
-window.closeBgClick = (e, id) => { if (e.target.id === id) closeModal(id); };
+window.closeBgClick = (e, id) => { if (e.target.id === id) window.closeModal(id); };
 window.openSidebar = () => { document.getElementById('sbOverlay').classList.add('active'); document.getElementById('adminSidebar').classList.add('open'); };
 window.closeSidebar = () => { document.getElementById('sbOverlay').classList.remove('active'); document.getElementById('adminSidebar').classList.remove('open'); };
 window.showToast = msg => { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2500); };
-window.openImageViewer = url => { document.getElementById('imageViewerImg').src = url; openModal('imageViewerModal'); };
+window.openImageViewer = url => { document.getElementById('imageViewerImg').src = url; window.openModal('imageViewerModal'); };
 
 /* ── 공유 기능 ── */
-window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => showToast("링크 복사 완료!")); closeModal('shareModal'); };
+window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
 window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
 
 window.downloadImage = async () => {
-    showToast("이미지 저장 중...");
+    window.showToast("이미지 저장 중...");
     try {
-        if (window.location.protocol === 'file:') showToast("로컬 파일 환경에서는 캡처가 안 될 수 있습니다.");
+        if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 일부 외부 이미지가 캡처되지 않을 수 있습니다.");
         const canvas = await html2canvas(document.getElementById('board'), { scale: 2, useCORS: true, backgroundColor: document.body.style.backgroundColor || '#f9fafb' });
-        const link = document.createElement('a'); link.download = `아이디어보드_${Date.now()}.png`; link.href = canvas.toDataURL('image/png'); link.click(); closeModal('shareModal');
-    } catch(e) { showToast("캡처 실패 (서버 환경 필요)"); }
+        const link = document.createElement('a'); link.download = `아이디어보드_${Date.now()}.png`; link.href = canvas.toDataURL('image/png'); link.click(); window.closeModal('shareModal');
+    } catch(e) { window.showToast("캡처 실패 (서버 환경 필요)"); }
 };
 
 window.downloadPDF = async () => {
   const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
   const origText = tWrap.textContent; tWrap.textContent = '생성 중…'; iWrap.textContent = '⏳';
   try {
-    if (window.location.protocol === 'file:') showToast("로컬 파일 환경에서는 PDF가 안 될 수 있습니다.");
+    if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 일부 외부 이미지가 PDF에 안 나올 수 있습니다.");
     const canvas = await html2canvas(document.getElementById('board'), { scale: 2, useCORS: true, backgroundColor: document.body.style.backgroundColor || '#f9fafb' });
     const pdf = new jspdf.jsPDF('l', 'mm', 'a4');
     const w = pdf.internal.pageSize.getWidth(); const h = (canvas.height * w) / canvas.width;
     pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
-    pdf.save(`아이디어보드_${Date.now()}.pdf`); showToast('PDF 저장 완료!'); closeModal('shareModal');
-  } catch(e) { showToast('PDF 생성 실패'); } finally { tWrap.textContent = origText; iWrap.textContent = '📄'; }
+    pdf.save(`아이디어보드_${Date.now()}.pdf`); window.showToast('PDF 저장 완료!'); window.closeModal('shareModal');
+  } catch(e) { window.showToast('PDF 생성 실패'); } finally { tWrap.textContent = origText; iWrap.textContent = '📄'; }
 };
 
 /* ── 파일 업로드 ── */
@@ -100,7 +100,7 @@ window.getYoutubeId = function(url) {
     const regExp = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
     const match = url.match(regExp);
     return (match && match[1]) ? match[1] : null;
-}
+};
 
 // ─────────────────────────────────────────────
 // Firebase 연동 및 핵심 로직
@@ -190,9 +190,8 @@ else {
 
       const totalWidth = cols * colWidth + (cols - 1) * gap;
       const offsetX = (board.clientWidth - totalWidth) / 2;
-      const colHeights = Array(cols).fill(130); // 상단 여유공간 130px
+      const colHeights = Array(cols).fill(130); 
 
-      // 핀터레스트 알고리즘
       posts.forEach(post => {
           const minCol = colHeights.indexOf(Math.min(...colHeights));
           post.style.left = `${offsetX + minCol * (colWidth + gap)}px`;
@@ -200,7 +199,6 @@ else {
           colHeights[minCol] += post.offsetHeight + gap;
       });
 
-      // 스크롤바 지지대
       let spacer = document.getElementById('masonry-spacer');
       if (!spacer) {
           spacer = document.createElement('div');
@@ -268,7 +266,7 @@ else {
     const newLayout = s.layout || 'canvas';
     const layoutChanged = currentLayout !== newLayout;
     currentLayout = newLayout;
-    window.currentLayout = currentLayout; // 전역 바인딩
+    window.currentLayout = currentLayout; 
     
     document.getElementById('board').setAttribute('data-layout', currentLayout);
     document.getElementById('layoutSelect').value = currentLayout;
@@ -341,10 +339,18 @@ else {
     el.querySelector('.edit').onclick = e => { e.stopPropagation(); window.editPost(id); };
     el.querySelector('.like-btn').onclick = e => { e.stopPropagation(); window.toggleLike(id); };
     
+    // 🌟 한글 입력기(IME) 중복 전송 방지 로직 (완벽 개선)
     el.querySelector('.comment-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.isComposing && e.target.value.trim()) { 
+      if (e.key === 'Enter') {
           e.preventDefault();
-          window.addComment(id, e.target.value.trim(), e.target); 
+          // 조합 중이거나 코드가 229(조합중)인 경우 무시
+          if (e.isComposing || e.keyCode === 229) return; 
+          
+          const text = e.target.value.trim();
+          if (text) {
+              e.target.value = ''; // 입력창 즉시 초기화하여 이중 트리거 원천 차단
+              window.addComment(id, text, e.target);
+          }
       }
     });
     
@@ -355,7 +361,7 @@ else {
     el.addEventListener('drop', (e) => handleDropOnWall(e, id)); 
     
     el.addEventListener('pointerdown', e => {
-        if(currentLayout === 'canvas') startFreeDrag(e, id, el);
+        if(window.currentLayout === 'canvas') startFreeDrag(e, id, el);
     });
     return el;
   }
@@ -365,7 +371,7 @@ else {
 
     let html = '';
     if(p.fileData) {
-        if(p.fileData.isImage) html += `<img src="${p.fileData.url}" class="post-img" alt="첨부이미지" onload="if(window.applyMasonry) window.applyMasonry()" onclick="openImageViewer('${p.fileData.url}')">`;
+        if(p.fileData.isImage) html += `<img src="${p.fileData.url}" class="post-img" alt="첨부이미지" onload="if(window.applyMasonry) window.applyMasonry()" onclick="window.openImageViewer('${p.fileData.url}')">`;
         else html += `<a href="${p.fileData.url}" download="${p.fileData.name}" class="post-file">📁 ${p.fileData.name}</a>`;
     }
     
@@ -400,14 +406,14 @@ else {
     }
     list.innerHTML = cHtml; list.scrollTop = list.scrollHeight;
 
-    if (currentLayout === 'canvas' && (!dragState.id || dragState.id !== id)) {
+    if (window.currentLayout === 'canvas' && (!dragState.id || dragState.id !== id)) {
       el.style.left = (p.x || 80) + 'px'; el.style.top  = (p.y || 80) + 'px';
     }
   }
 
   function renderColumns () {
     const board  = document.getElementById('board');
-    if (currentLayout !== 'column') {
+    if (window.currentLayout !== 'column') {
       Object.values(localColEls).forEach(el => el.remove());
       localColEls = {}; document.getElementById('addColBtnWrap')?.remove(); return;
     }
@@ -453,7 +459,7 @@ else {
   }
 
   function renderPostsOrder () {
-    if(currentLayout === 'canvas') {
+    if(window.currentLayout === 'canvas') {
         Object.keys(localPosts).forEach(id => {
             const p = allPostsData[id];
             const el = localPosts[id];
@@ -469,7 +475,7 @@ else {
     const order = document.getElementById('postOrderSelect').value;
     const board = document.getElementById('board');
     
-    if (currentLayout === 'wall') {
+    if (window.currentLayout === 'wall') {
         const posts = Array.from(board.querySelectorAll('.post-it'));
         posts.sort((a,b) => {
             const ta = allPostsData[a.id]?.createdAt || 0; 
@@ -509,7 +515,7 @@ else {
 
   function placePost (el, colId) {
     let target = document.getElementById('board');
-    if (currentLayout === 'column') {
+    if (window.currentLayout === 'column') {
       const firstCid = Object.keys(localColumnsData)[0];
       const bodyId   = `colbody-${colId || firstCid}`;
       target = document.getElementById(bodyId) || target;
@@ -626,7 +632,7 @@ else {
     likedPosts[id] = true; localStorage.setItem('liked_posts', JSON.stringify(likedPosts));
   };
   
-  window.addComment = (id, text, inputEl) => { push(ref(db, `boards/${currentBoardId}/posts/${id}/comments`), { author: myName, text, timestamp: Date.now() }); inputEl.value = ''; };
+  window.addComment = (id, text, inputEl) => { push(ref(db, `boards/${currentBoardId}/posts/${id}/comments`), { author: myName, text, timestamp: Date.now() }); };
 
   window.addColumn = () => { const t = prompt('새 섹션 이름:'); if (t?.trim()) push(columnsRef, { title: t.trim(), order: Date.now() }); };
   window.renameColumn = (cid, v) => update(ref(db, `boards/${currentBoardId}/columns/${cid}`), { title: v });
@@ -650,7 +656,7 @@ else {
 
   const dragState = { id: null, offsetX: 0, offsetY: 0, el: null };
   function startFreeDrag (e, id, el) {
-    if (currentLayout !== 'canvas') return; 
+    if (window.currentLayout !== 'canvas') return; 
     if (e.target.closest('.delete-btn,.edit-btn,.like-btn,.comment-input,.post-link,.post-img,.post-file,.yt-thumb-wrap')) return;
 
     dragState.id = id; dragState.el = el;
@@ -672,7 +678,7 @@ else {
     const y = e.clientY - dragState.offsetY + boardEl.scrollTop;
     
     dragState.el.style.left = x + 'px'; dragState.el.style.top  = y + 'px';
-    if (currentLayout === 'canvas') update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x, y });
+    if (window.currentLayout === 'canvas') update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x, y });
   }
   function onUp (e) {
     if (!dragState.id) return;
@@ -685,7 +691,7 @@ else {
   }
 
   function handleDragStart(e, id) {
-      if(currentLayout === 'canvas') { e.preventDefault(); return; }
+      if(window.currentLayout === 'canvas') { e.preventDefault(); return; }
       if (e.target.closest('.post-btn,.like-btn,.comment-input,.post-link,.post-img,.post-file,.yt-thumb-wrap')) { e.preventDefault(); return; }
       
       e.dataTransfer.setData('text/plain', id);
@@ -722,7 +728,7 @@ else {
 
       let updates = { createdAt: newTime };
 
-      if(currentLayout === 'column') {
+      if(window.currentLayout === 'column') {
          const colWrap = targetEl.closest('.column-wrap');
          if (colWrap) {
              updates.columnId = colWrap.id.replace('col-', '');
@@ -736,4 +742,3 @@ else {
   window.getInitials = name => (name || '?').charAt(0).toUpperCase();
   window.escapeHtml  = str => str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-</script>
