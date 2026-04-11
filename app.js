@@ -137,6 +137,14 @@ try {
     likedPosts = JSON.parse(localStorage.getItem('liked_posts') || '{}');
 } catch(e) { console.warn("태블릿 시크릿 모드: 로컬 저장소가 제한됨."); }
 
+if (typeof MobileDragDrop !== 'undefined') {
+    MobileDragDrop.polyfill({
+        holdToDrag: 150, 
+        dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
+    });
+    window.addEventListener('touchmove', function() {}, {passive: false});
+}
+
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
@@ -364,7 +372,7 @@ else {
       spacer.style.top = `${Math.max(...colHeights) + 80}px`; 
   };
 
-  // 🌟 캔버스 모드 무한 자동 확장 로직
+  // 🌟 캔버스 모드 무한 자동 확장
   window.updateCanvasSize = () => {
       if (window.currentLayout !== 'canvas') {
           const spacer = document.getElementById('canvas-spacer');
@@ -557,11 +565,8 @@ else {
     el.addEventListener('dragover', (e) => e.preventDefault());
     el.addEventListener('drop', (e) => handleDropOnWall(e, id)); 
     
-    // 🌟 터치 기기용 완벽 캡처 로직 (태블릿 드래그 오류 우회)
     el.addEventListener('pointerdown', e => {
-        if(window.currentLayout === 'canvas') {
-            startFreeDrag(e, id, el);
-        }
+        if(window.currentLayout === 'canvas') startFreeDrag(e, id, el);
     });
     return el;
   }
@@ -855,69 +860,98 @@ else {
     window.location.href = window.location.href.split('?')[0].split('#')[0];
   };
 
-  /* ── 🌟 캔버스 모드 모바일/PC 드래그 완벽 구현 (Lag Free) ── */
-  const dragState = { id: null, offsetX: 0, offsetY: 0, el: null, pointerId: null };
-  
+  // 🌟 캔버스 모드 스마트 오토 스크롤 엔진 🌟
+  const dragState = { id: null, offsetX: 0, offsetY: 0, el: null };
+  let autoScrollRAF = null;
+  const ptrPos = { x: 0, y: 0 }; // 실시간 마우스/터치 좌표 추적
+
+  function updateDragElementPosition() {
+      if (!dragState.el) return;
+      const boardEl = document.getElementById('board');
+      
+      const x = ptrPos.x - dragState.offsetX + boardEl.scrollLeft;
+      const y = ptrPos.y - dragState.offsetY + boardEl.scrollTop;
+      
+      dragState.el.style.left = x + 'px';
+      dragState.el.style.top  = y + 'px';
+      window.updateCanvasSize(); // 즉각적인 무한 확장
+  }
+
+  function autoScrollLoop() {
+      if (!dragState.id) return;
+      
+      const EDGE = 80; // 화면 끝 80px 내에 진입하면 스크롤 발동
+      const SPEED = 15; // 스크롤 속도
+      let isScrolling = false;
+
+      // 윈도우 스크롤 방식 적용 (브라우저 창 자체를 스크롤)
+      if (ptrPos.x > window.innerWidth - EDGE) { window.scrollBy(SPEED, 0); isScrolling = true; }
+      else if (ptrPos.x < EDGE) { window.scrollBy(-SPEED, 0); isScrolling = true; }
+
+      if (ptrPos.y > window.innerHeight - EDGE) { window.scrollBy(0, SPEED); isScrolling = true; }
+      else if (ptrPos.y < EDGE) { window.scrollBy(0, -SPEED); isScrolling = true; }
+
+      // 스크롤이 일어날 때마다 포스트잇의 실제 좌표도 보정
+      if (isScrolling) {
+          updateDragElementPosition();
+      }
+      
+      autoScrollRAF = requestAnimationFrame(autoScrollLoop);
+  }
+
   function startFreeDrag (e, id, el) {
     if (window.currentLayout !== 'canvas') return; 
     if (e.target.closest('.delete-btn,.edit-btn,.like-btn,.comment-input,.post-link,.post-img,.post-file,.yt-thumb-wrap')) return;
 
-    dragState.id = id; 
-    dragState.el = el;
-    dragState.pointerId = e.pointerId; // 🌟 터치 놓침 방지용 ID 저장
-    
+    dragState.id = id; dragState.el = el;
     const rect = el.getBoundingClientRect();
     dragState.offsetX = e.clientX - rect.left;
     dragState.offsetY = e.clientY - rect.top;
+
+    ptrPos.x = e.clientX;
+    ptrPos.y = e.clientY;
 
     el.style.zIndex = '9999';
     el.classList.add('dragging');
     document.body.classList.add('is-dragging');
 
-    // 🌟 터치 기기에서 스크롤을 막고 요소를 꽉 잡고 있도록 캡처
+    // 모바일 터치 포커스 캡처
     try { el.setPointerCapture(e.pointerId); } catch(e){}
 
     document.addEventListener('pointermove', onMove, { passive: false });
     document.addEventListener('pointerup', onUp, { once: true });
-    document.addEventListener('pointercancel', onUp, { once: true });
+    
+    // 자동 스크롤 루프 시작
+    autoScrollRAF = requestAnimationFrame(autoScrollLoop);
   }
   
   function onMove (e) {
     if (!dragState.id) return; e.preventDefault();
-    const boardEl = document.getElementById('board');
-    
-    // 현재 마우스/터치 위치에 스크롤바 이동값 합산
-    const x = e.clientX - dragState.offsetX + boardEl.scrollLeft;
-    const y = e.clientY - dragState.offsetY + boardEl.scrollTop;
-    
-    dragState.el.style.left = x + 'px'; 
-    dragState.el.style.top  = y + 'px';
-    
-    if (window.currentLayout === 'canvas') {
-        window.updateCanvasSize(); // 🌟 드래그 중에 화면을 벗어나면 지지대를 밀어내어 무한확장!
-    }
+    ptrPos.x = e.clientX;
+    ptrPos.y = e.clientY;
+    updateDragElementPosition();
   }
   
   function onUp (e) {
     if (!dragState.id) return;
     const el = dragState.el;
     
-    // 🌟 손가락을 떼었을 때 딱 1번만 Firebase 서버에 전송 (모바일 버벅임 원천 차단)
+    // 자동 스크롤 정지
+    cancelAnimationFrame(autoScrollRAF);
+
+    // 딱 1번만 Firebase 서버에 전송
     const finalX = parseFloat(el.style.left) || 80;
     const finalY = parseFloat(el.style.top) || 80;
     update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x: finalX, y: finalY });
 
-    try { el.releasePointerCapture(dragState.pointerId); } catch(e){}
+    try { el.releasePointerCapture(e.pointerId); } catch(e){}
     
     el.classList.remove('dragging');
     el.style.zIndex = '';
     document.body.classList.remove('is-dragging');
     
-    dragState.id = null; 
-    dragState.el = null;
-    
+    dragState.id = null; dragState.el = null;
     document.removeEventListener('pointermove', onMove);
-    document.removeEventListener('pointercancel', onUp);
   }
 
   function handleDragStart(e, id) {
