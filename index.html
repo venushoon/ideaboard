@@ -15,10 +15,9 @@
 <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/scroll-behaviour.min.js"></script>
 <script>
-    // 태블릿/전자칠판 드래그 즉시 활성화
     window.addEventListener('DOMContentLoaded', () => {
         MobileDragDrop.polyfill({
-            holdToDrag: 200, // 0.2초 꾹 누르면 스크롤 대신 드래그 시작
+            holdToDrag: 200, 
             dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
         });
         window.addEventListener('touchmove', function() {}, {passive: false});
@@ -32,7 +31,10 @@
 <div id="lobbyView">
   <header class="lobby-header">
     <h1 class="lobby-logo"><span>📋</span>아이디어 보드</h1>
-    <button class="btn-new" onclick="createBoardFromLobby()">+ 새 보드 만들기</button>
+    <div style="display: flex; gap: 12px;">
+        <button class="btn-new" style="background: var(--ink-2);" onclick="openStorageManager()">💾 용량 정리</button>
+        <button class="btn-new" onclick="createBoardFromLobby()">+ 새 보드 만들기</button>
+    </div>
   </header>
   <div class="lobby-hero">
     <h2 class="lobby-hero-title">창의적인 아이디어를 한 곳에</h2>
@@ -67,6 +69,24 @@
   <div id="board" data-layout="canvas"></div>
 
   <button class="fab" onclick="openWriteModal(null)" title="아이디어 남기기">＋</button>
+</div>
+
+<div class="overlay" id="storageModal" onclick="closeBgClick(event,'storageModal')">
+  <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+          <h3 style="margin:0;">💾 데이터 용량 관리</h3>
+          <button class="modal-close" onclick="closeModal('storageModal')">✕</button>
+      </div>
+      <div style="background: var(--primary-soft); padding: 16px; border-radius: 12px; margin-bottom: 24px;">
+          <p style="margin:0 0 8px 0; font-weight:800; color: var(--navy);">🔥 Firebase 기본 무료 제공량: 1GB</p>
+          <p style="margin:0; font-size:0.85rem; color: var(--ink-2); line-height: 1.4;">사진이나 대용량 파일을 많이 첨부하면 데이터가 빠르게 찰 수 있습니다. 아래 버튼을 통해 불필요해진 '사진 및 첨부파일'만 깔끔하게 지워보세요! (작성된 글과 댓글은 지워지지 않습니다.)</p>
+      </div>
+      <div style="text-align: center; margin-bottom: 24px;">
+          <p id="storageText" style="font-size: 1.1rem; font-weight: 800; color: var(--ink); margin-bottom: 16px;">용량을 계산해볼까요?</p>
+          <button id="calcBtn" class="btn" style="background: var(--navy); color: white;" onclick="calculateStorage()">현재 첨부파일 사용량 계산하기</button>
+      </div>
+      <button id="cleanBtn" class="btn-danger" style="display:none; width: 100%;" onclick="cleanUpFiles()">🚨 전체 보드의 사진/첨부파일 일괄 삭제</button>
+  </div>
 </div>
 
 <div class="overlay" id="nameModal">
@@ -265,6 +285,5 @@
 <div id="toast"></div>
 
 <script type="module" src="app.js"></script>
-
 </body>
 </html>
