@@ -105,22 +105,22 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 /* ─────────────────────────────────────────────
    LAYOUTS (🌟 완벽한 Masonry & 컬럼 스크롤 고정)
 ───────────────────────────────────────────── */
-/* 1. Canvas (자유 배치) - 무한 스크롤 허용 */
+/* 1. Canvas (자유 배치) */
 #board[data-layout="canvas"] { overflow: auto; min-width: 100vw; min-height: 100vh; }
 #board[data-layout="canvas"] .post-it { position: absolute; }
-#board[data-layout="canvas"] .post-img { max-height: 150px; } /* 캔버스 전용 축소 */
+#board[data-layout="canvas"] .post-img { max-height: 150px; }
 
 /* 2. Wall (담벼락 - 완벽한 핀터레스트(Masonry) 스타일 구현) */
 #board[data-layout="wall"] {
   display: block; 
-  padding: 0; /* 패딩은 JS에서 계산하여 여백을 부여합니다 */
+  padding: 0; 
   overflow-y: auto !important; 
   overflow-x: hidden !important; 
   height: 100vh;
   touch-action: pan-y !important; /* 모바일 스크롤 먹통 완벽 해결 */
 }
 #board[data-layout="wall"] .post-it { 
-  position: absolute !important; /* JS 기반의 완벽한 핀터레스트 정렬을 위해 필수 적용 */
+  position: absolute !important; 
   transform: none !important; 
   width: 280px !important; 
   cursor: grab; 
@@ -135,7 +135,7 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 }
 #board[data-layout="column"] .post-it { position:relative !important; left:auto !important; top:auto !important; transform:none !important; width:100%; cursor:grab; margin-bottom: 16px; flex-shrink: 0;}
 
-/* 컬럼 래퍼: 높이를 화면에 꽉 차게 고정 (스크롤 안 짤림) */
+/* 컬럼 래퍼: 높이를 화면에 꽉 차게 고정 */
 .column-wrap {
   width: 320px; flex-shrink:0; background: transparent; 
   display: flex; flex-direction: column; 
@@ -216,7 +216,6 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 .like-icon { display:inline-block; transition: transform .1s var(--ease-spring), filter 0.1s; filter: grayscale(100%); opacity: 0.4;}
 .like-count { font-weight:800; font-family: 'Montserrat', sans-serif; color: var(--ink-3); transition: color 0.1s;}
 
-/* 0.01초 반응 클래스 */
 .like-btn.liked .like-icon { filter: grayscale(0%); opacity: 1;}
 .like-btn.liked[data-type="like"] .like-count { color: #ef4444; }
 .like-btn.liked[data-type="thumb"] .like-count { color: #3b82f6; }
