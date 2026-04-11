@@ -1,4 +1,14 @@
-/* ── UI 공통 전역 함수 ── */
+/* ─────────────────────────────────────────────
+   🌟 1. 전역 안전장치 및 유틸리티 (에러 원천 차단)
+   (Firebase 데이터가 아무리 빨리 들어와도 에러가 나지 않도록 최상단에 배치)
+───────────────────────────────────────────── */
+window.getInitials = name => (name || '?').charAt(0).toUpperCase();
+window.escapeHtml  = str => str ? String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '';
+window.applyMasonry = () => {}; // 이미지 빠른 로딩 시 참조 에러 방지용 빈 함수
+window.updateCanvasSize = () => {}; 
+window.currentLayout = 'canvas';
+
+/* ── 2. UI 공통 전역 함수 ── */
 document.querySelectorAll('.color-opt').forEach(opt => {
   opt.addEventListener('click', (e) => {
       document.querySelectorAll('.color-opt').forEach(el => el.classList.remove('active'));
@@ -23,7 +33,7 @@ window.closeSidebar = () => { document.getElementById('sbOverlay').classList.rem
 window.showToast = msg => { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2500); };
 window.openImageViewer = url => { document.getElementById('imageViewerImg').src = url; window.openModal('imageViewerModal'); };
 
-/* ── 공유 기능 ── */
+/* ── 3. 공유 기능 및 이미지 캡처 ── */
 window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
 window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
 
@@ -49,7 +59,7 @@ window.downloadPDF = async () => {
   } catch(e) { window.showToast('PDF 생성 실패'); } finally { tWrap.textContent = origText; iWrap.textContent = '📄'; }
 };
 
-/* ── 파일 업로드 ── */
+/* ── 4. 파일 업로드 ── */
 window.currentFileData = null; 
 window.handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -95,7 +105,6 @@ window.removeFile = () => {
     document.getElementById('filePreviewWrap').style.display = 'none';
 };
 
-/* ── 유튜브 ID 추출기 ── */
 window.getYoutubeId = function(url) {
     const regExp = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
     const match = url.match(regExp);
@@ -103,12 +112,11 @@ window.getYoutubeId = function(url) {
 };
 
 // ─────────────────────────────────────────────
-// Firebase 연동 및 핵심 로직
+// 5. Firebase 연동 및 핵심 비즈니스 로직
 // ─────────────────────────────────────────────
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, push, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-/* 🔥 이곳에 선생님의 Firebase 설정값을 넣어주세요! */
 const firebaseConfig = {
   apiKey: "AIzaSyASO0pcnIdlNIFnj_wh8OemymWW66jMH_I",
   authDomain: "learner-board.firebaseapp.com",
@@ -122,10 +130,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-// 🌟 터치 기기용 드래그 앤 드롭 폴리필 활성화 (태블릿/전자칠판 호환)
+// 🌟 터치 기기용 드래그 앤 드롭 폴리필 활성화 (태블릿/전자칠판 지원)
 if (typeof MobileDragDrop !== 'undefined') {
     MobileDragDrop.polyfill({
-        holdToDrag: 150, // 0.15초 꾹 누르면 드래그 시작
+        holdToDrag: 150, 
         dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
     });
     window.addEventListener('touchmove', function() {}, {passive: false});
@@ -134,7 +142,7 @@ if (typeof MobileDragDrop !== 'undefined') {
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
-// 🌟 1. 휴지통 관련 함수 추가
+// 🌟 로비 휴지통 기능
 window.deleteBoard = (boardId, e) => {
     e.stopPropagation();
     if (confirm('이 보드를 휴지통으로 이동할까요? (3일 후 완전히 삭제됩니다)')) {
@@ -158,6 +166,7 @@ window.hardDeleteBoard = (boardId, e) => {
     }
 };
 
+// ── 로비(보드 목록) 렌더링 ──
 if (!currentBoardId) {
   document.getElementById('appView').style.display  = 'none';
   document.getElementById('lobbyView').style.display = 'flex';
@@ -176,12 +185,12 @@ if (!currentBoardId) {
     const boards = Object.keys(data).map(k => ({ id: k, ...data[k] })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
     boards.forEach(b => {
-      // 🌟 3일 보관 로직
+      // 휴지통 로직 (3일=259200000ms 보관 후 삭제)
       if (b.deletedAt) {
           if (now - b.deletedAt > 3 * 24 * 60 * 60 * 1000) {
               remove(ref(db, `boards/${b.id}`));
               remove(ref(db, `board_meta/${b.id}`));
-              return; // 3일 지나면 자동 영구 삭제
+              return; 
           }
           
           hasTrash = true;
@@ -225,6 +234,7 @@ if (!currentBoardId) {
     if (name?.trim()) { window.location.hash = `board=${encodeURIComponent(name.trim())}`; window.location.reload(); }
   };
 } 
+// ── 보드 내부(작업 공간) 렌더링 ──
 else {
   document.getElementById('lobbyView').style.display = 'none';
   document.getElementById('appView').style.display   = 'flex';
@@ -237,7 +247,6 @@ else {
   let myName         = localStorage.getItem('learner_name') || '';
   let likedPosts     = JSON.parse(localStorage.getItem('liked_posts') || '{}');
   let isAnonMode     = false;
-  let currentLayout  = 'canvas';
   let reactionType   = 'like'; 
   
   let currentColId   = null;   
@@ -248,6 +257,7 @@ else {
   let localPosts     = {};     
   let localColEls    = {};     
 
+  /* ── 🌟 완벽한 JS Masonry 핀터레스트 로직 ── */
   window.applyMasonry = () => {
       if (window.currentLayout !== 'wall') return;
       const board = document.getElementById('board');
@@ -284,7 +294,7 @@ else {
       spacer.style.top = `${Math.max(...colHeights) + 80}px`; 
   };
 
-  // 🌟 3. 캔버스 짤림 방지 (동적 크기 확장)
+  /* ── 🌟 캔버스 모드 짤림 방지 (동적 확장) ── */
   window.updateCanvasSize = () => {
       if (window.currentLayout !== 'canvas') {
           document.getElementById('board').style.minWidth = '100vw';
@@ -367,16 +377,14 @@ else {
     else { document.body.style.color = ''; document.querySelector('.board-title-text').style.color=''; document.querySelector('.board-desc-text').style.color='';}
 
     const newLayout = s.layout || 'canvas';
-    const layoutChanged = currentLayout !== newLayout;
-    currentLayout = newLayout;
-    window.currentLayout = currentLayout; 
+    const layoutChanged = window.currentLayout !== newLayout;
+    window.currentLayout = newLayout; 
     
-    document.getElementById('board').setAttribute('data-layout', currentLayout);
-    document.getElementById('layoutSelect').value = currentLayout;
+    document.getElementById('board').setAttribute('data-layout', window.currentLayout);
+    document.getElementById('layoutSelect').value = window.currentLayout;
 
-    // 🌟 레이아웃 변경 시 드래그 속성 동기화
     document.querySelectorAll('.post-it').forEach(el => {
-        el.draggable = (currentLayout !== 'canvas');
+        el.draggable = (window.currentLayout !== 'canvas');
     });
 
     updateAllReactionsIcon();
@@ -448,6 +456,7 @@ else {
     el.querySelector('.edit').onclick = e => { e.stopPropagation(); window.editPost(id); };
     el.querySelector('.like-btn').onclick = e => { e.stopPropagation(); window.toggleLike(id); };
     
+    // 한글 입력 이중 전송 방지 로직
     el.querySelector('.comment-input').addEventListener('keydown', e => {
       if (e.key === 'Enter') {
           e.preventDefault();
@@ -460,7 +469,6 @@ else {
       }
     });
     
-    // 🌟 캔버스 모드에서는 순수 터치용 드래그, 그 외엔 HTML5 드래그(폴리필) 작동
     el.draggable = (window.currentLayout !== 'canvas');
     el.addEventListener('dragstart', (e) => handleDragStart(e, id));
     el.addEventListener('dragend', handleDragEnd);
@@ -787,7 +795,7 @@ else {
     dragState.el.style.left = x + 'px'; dragState.el.style.top  = y + 'px';
     if (window.currentLayout === 'canvas') {
         update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x, y });
-        window.updateCanvasSize(); // 🌟 드래그 중 실시간 캔버스 확장
+        window.updateCanvasSize();
     }
   }
   function onUp (e) {
@@ -848,7 +856,4 @@ else {
       update(ref(db, `boards/${currentBoardId}/posts/${draggedId}`), updates);
       document.querySelectorAll('.post-it').forEach(el => el.classList.remove('is-dragging-node'));
   }
-
-  window.getInitials = name => (name || '?').charAt(0).toUpperCase();
-  window.escapeHtml  = str => str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
