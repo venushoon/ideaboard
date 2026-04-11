@@ -39,7 +39,7 @@ window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrse
 window.downloadImage = async () => {
     window.showToast("이미지 저장 중...");
     try {
-        if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 일부 외부 이미지가 캡처되지 않을 수 있습니다.");
+        if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 외부 이미지가 캡처되지 않을 수 있습니다.");
         const canvas = await html2canvas(document.getElementById('board'), { scale: 2, useCORS: true, backgroundColor: document.body.style.backgroundColor || '#f9fafb' });
         const link = document.createElement('a'); link.download = `아이디어보드_${Date.now()}.png`; link.href = canvas.toDataURL('image/png'); link.click(); window.closeModal('shareModal');
     } catch(e) { window.showToast("캡처 실패 (서버 환경 필요)"); }
@@ -49,7 +49,7 @@ window.downloadPDF = async () => {
   const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
   const origText = tWrap.textContent; tWrap.textContent = '생성 중…'; iWrap.textContent = '⏳';
   try {
-    if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 일부 외부 이미지가 PDF에 안 나올 수 있습니다.");
+    if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 외부 이미지가 캡처되지 않을 수 있습니다.");
     const canvas = await html2canvas(document.getElementById('board'), { scale: 2, useCORS: true, backgroundColor: document.body.style.backgroundColor || '#f9fafb' });
     const pdf = new jspdf.jsPDF('l', 'mm', 'a4');
     const w = pdf.internal.pageSize.getWidth(); const h = (canvas.height * w) / canvas.width;
@@ -114,9 +114,9 @@ window.getYoutubeId = function(url) {
 // 5. Firebase 연동 및 핵심 비즈니스 로직
 // ─────────────────────────────────────────────
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getDatabase, ref, onValue, set, update, push, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+import { getDatabase, ref, onValue, set, update, push, remove, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-/* 🔥 주의: 선생님의 Firebase 설정값으로 변경해주세요! (개인정보 보호를 위해 마스킹 처리됨) */
+/* 🔥 주의: 선생님의 Firebase 설정값으로 변경해주세요! */
 const firebaseConfig = {
   apiKey: "AIzaSyASO0pcnIdlNIFnj_wh8OemymWW66jMH_I",
   authDomain: "learner-board.firebaseapp.com",
@@ -130,16 +130,93 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-// 🌟 태블릿 로컬 스토리지 에러 우회
 let myName = '';
 let likedPosts = {};
 try {
     myName = localStorage.getItem('learner_name') || '';
     likedPosts = JSON.parse(localStorage.getItem('liked_posts') || '{}');
-} catch(e) { console.warn("태블릿 시크릿 모드: 로컬 저장소가 제한됨."); }
+} catch(e) { console.warn("로컬 저장소 접근 제한 상태"); }
 
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
+
+// 🌟 로비 전용: 용량(사진) 계산 및 일괄 삭제 기능
+window.openStorageManager = () => {
+    document.getElementById('storageText').innerHTML = "용량을 계산해볼까요?";
+    document.getElementById('calcBtn').style.display = 'inline-block';
+    document.getElementById('cleanBtn').style.display = 'none';
+    window.openModal('storageModal');
+};
+
+window.calculateStorage = async () => {
+    const btn = document.getElementById('calcBtn');
+    const txt = document.getElementById('storageText');
+    btn.textContent = "계산 중... (데이터 로딩)";
+    btn.disabled = true;
+
+    try {
+        const snap = await get(ref(db, 'boards'));
+        const boards = snap.val() || {};
+        let totalBytes = 0;
+        let fileCount = 0;
+
+        Object.values(boards).forEach(board => {
+            if(board.posts) {
+                Object.values(board.posts).forEach(post => {
+                    if(post.fileData && post.fileData.url) {
+                        totalBytes += post.fileData.url.length; // Base64 길이로 Byte 추정
+                        fileCount++;
+                    }
+                });
+            }
+        });
+
+        const mb = (totalBytes / (1024 * 1024)).toFixed(2);
+        txt.innerHTML = `첨부파일 <b style="color:var(--accent)">${fileCount}</b>개<br>현재 추정 사용량: <b style="color:var(--accent)">${mb} MB</b> / 1024 MB`;
+        btn.style.display = 'none';
+        
+        if(fileCount > 0) {
+            document.getElementById('cleanBtn').style.display = 'block';
+        }
+    } catch(e) {
+        txt.textContent = "계산 중 오류가 발생했습니다. 네트워크를 확인해주세요.";
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "현재 첨부파일 사용량 계산하기";
+    }
+};
+
+window.cleanUpFiles = async () => {
+    if(!confirm("모든 보드의 첨부파일(사진, 파일)을 완전히 삭제합니다.\n(포스트잇의 텍스트와 댓글은 안전하게 유지됩니다!)\n\n정말 삭제하시겠습니까?")) return;
+    
+    window.showToast("첨부파일 정리 중...");
+    try {
+        const snap = await get(ref(db, 'boards'));
+        const boards = snap.val() || {};
+        const updates = {};
+        
+        Object.keys(boards).forEach(boardId => {
+            const posts = boards[boardId].posts;
+            if(posts) {
+                Object.keys(posts).forEach(postId => {
+                    if(posts[postId].fileData) {
+                        updates[`boards/${boardId}/posts/${postId}/fileData`] = null; // 사진 필드만 파괴
+                    }
+                });
+            }
+        });
+
+        if(Object.keys(updates).length > 0) {
+            await update(ref(db), updates);
+            window.showToast("용량 정리가 완료되었습니다!");
+            window.closeModal('storageModal');
+        } else {
+            window.showToast("삭제할 첨부파일이 없습니다.");
+        }
+    } catch(e) {
+        window.showToast("파일 정리 중 오류가 발생했습니다.");
+    }
+};
 
 // 🌟 15일 휴지통 로직
 window.deleteBoard = (boardId, e) => {
@@ -165,6 +242,7 @@ window.hardDeleteBoard = (boardId, e) => {
     }
 };
 
+// ── 로비 렌더링 ──
 if (!currentBoardId) {
   document.getElementById('appView').style.display  = 'none';
   document.getElementById('lobbyView').style.display = 'flex';
@@ -183,7 +261,6 @@ if (!currentBoardId) {
     const boards = Object.keys(data).map(k => ({ id: k, ...data[k] })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
     boards.forEach(b => {
-      // 🌟 15일 지난 보드 완전 삭제 (15 * 24시간 * 60분 * 60초 * 1000ms)
       if (b.deletedAt) {
           if (now - b.deletedAt > 15 * 24 * 60 * 60 * 1000) {
               remove(ref(db, `boards/${b.id}`));
@@ -231,6 +308,7 @@ if (!currentBoardId) {
     if (name?.trim()) { window.location.hash = `board=${encodeURIComponent(name.trim())}`; window.location.reload(); }
   };
 } 
+// ── 보드 앱 렌더링 ──
 else {
   document.getElementById('lobbyView').style.display = 'none';
   document.getElementById('appView').style.display   = 'flex';
@@ -241,9 +319,7 @@ else {
   const metaRef     = ref(db, `board_meta/${currentBoardId}`);
 
   let isAnonMode     = false;
-  let currentLayout  = 'canvas';
   let reactionType   = 'like'; 
-  
   let currentColId   = null;   
   let currentEditId  = null;
 
@@ -288,23 +364,25 @@ else {
       spacer.style.top = `${Math.max(...colHeights) + 80}px`; 
   };
 
-  // 🌟 캔버스 모드 잘림 방지 로직 보강
+  // 🌟 캔버스 모드 무한 자동 확장 로직
   window.updateCanvasSize = () => {
       if (window.currentLayout !== 'canvas') {
-          document.getElementById('board').style.minWidth = '100vw';
-          document.getElementById('board').style.minHeight = '100vh';
+          const spacer = document.getElementById('canvas-spacer');
+          if (spacer) spacer.style.display = 'none';
           return;
       }
       
       let maxX = window.innerWidth;
       let maxY = window.innerHeight;
       
+      // 저장된 포스트들의 좌표를 기반으로 최대 범위 계산
       Object.keys(allPostsData).forEach(id => {
           const p = allPostsData[id];
           if (p.x && p.x + 350 > maxX) maxX = p.x + 350;
           if (p.y && p.y + 350 > maxY) maxY = p.y + 350;
       });
 
+      // 현재 드래그 중인 아이템의 좌표까지 포함
       if (dragState.el) {
           const dragX = parseFloat(dragState.el.style.left) || 0;
           const dragY = parseFloat(dragState.el.style.top) || 0;
@@ -312,9 +390,21 @@ else {
           if (dragY + 350 > maxY) maxY = dragY + 350;
       }
 
+      // 화면을 억지로 넓히기 위해 가장 끝 좌표에 투명한 블록(Spacer) 배치
       const board = document.getElementById('board');
-      board.style.minWidth = maxX + 'px';
-      board.style.minHeight = maxY + 'px';
+      let spacer = document.getElementById('canvas-spacer');
+      if (!spacer) {
+          spacer = document.createElement('div');
+          spacer.id = 'canvas-spacer';
+          spacer.style.position = 'absolute';
+          spacer.style.width = '1px';
+          spacer.style.height = '1px';
+          spacer.style.visibility = 'hidden';
+          board.appendChild(spacer);
+      }
+      spacer.style.display = 'block';
+      spacer.style.left = maxX + 'px';
+      spacer.style.top = maxY + 'px';
   };
 
   window.addEventListener('resize', () => {
@@ -453,7 +543,6 @@ else {
     el.querySelector('.like-btn').onclick = e => { e.stopPropagation(); window.toggleLike(id); };
     
     el.querySelector('.comment-input').addEventListener('keydown', e => {
-      // 🌟 한글 입력기(IME) 중복 전송 완벽 방지
       if (e.key === 'Enter') {
           e.preventDefault();
           if (e.isComposing || e.keyCode === 229) return; 
@@ -783,6 +872,7 @@ else {
     document.addEventListener('pointermove', onMove, { passive: false });
     document.addEventListener('pointerup', onUp, { once: true });
   }
+  
   function onMove (e) {
     if (!dragState.id) return; e.preventDefault();
     const boardEl = document.getElementById('board');
@@ -792,9 +882,10 @@ else {
     dragState.el.style.left = x + 'px'; dragState.el.style.top  = y + 'px';
     if (window.currentLayout === 'canvas') {
         update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x, y });
-        window.updateCanvasSize(); 
+        window.updateCanvasSize(); // 🌟 실시간 확장 로직
     }
   }
+  
   function onUp (e) {
     if (!dragState.id) return;
     const el = dragState.el;
