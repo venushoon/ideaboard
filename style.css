@@ -150,7 +150,7 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 .add-col-btn:hover { background: white; color: var(--primary); border-color: var(--primary);}
 
 /* ─────────────────────────────────────────────
-   POST-IT (🌟 태블릿 드래그 메뉴 방지 추가)
+   POST-IT
 ───────────────────────────────────────────── */
 .post-it {
   position:absolute; width: 280px; padding: 0; font-family: inherit;
@@ -158,13 +158,21 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
   display:flex; flex-direction:column; cursor:grab; overflow: hidden;
   transition: box-shadow 0.15s; animation: postIn .3s var(--ease-spring) both;
   background: white; 
-  -webkit-touch-callout: none; /* 🌟 iOS 길게 누르기 메뉴 방지 */
+  -webkit-touch-callout: none;
   user-select: none;
 }
 @keyframes postIn { from { opacity:0; transform: scale(.9) translateY(10px); } to { opacity:1; transform: scale(1) translateY(0); } }
 .post-it:hover { box-shadow: var(--sh-md); }
 
-.post-it.dragging { cursor:grabbing !important; box-shadow: var(--sh-pop); transform: scale(1.03) rotate(2deg) !important; opacity: 0.95; z-index: 9999 !important;}
+/* 🌟 터치 드래그 충돌 방지 핵심 코드 */
+.post-it.dragging { 
+  cursor:grabbing !important; 
+  box-shadow: var(--sh-pop); 
+  transform: scale(1.03) rotate(2deg) !important; 
+  opacity: 0.95; 
+  z-index: 9999 !important;
+  touch-action: none !important; /* 모바일에서 드래그 중 스크롤 일어나는 것 원천 차단 */
+}
 .post-it.is-dragging-node { opacity: 0.4; } 
 
 .post-top { padding: 12px 16px; display:flex; justify-content:space-between; align-items:center; }
@@ -176,7 +184,7 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 .post-btn { background:none; border:none; cursor:pointer; width:28px; height:28px; border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size:.9rem; color: rgba(0,0,0,.4); transition: .15s; }
 .post-btn:hover { background: rgba(0,0,0,.08); color: var(--ink);}
 
-.post-body-content { padding: 0 16px 12px; user-select: text; /* 내용은 복사 가능하게 허용 */ }
+.post-body-content { padding: 0 16px 12px; user-select: text; }
 
 .post-img { width: calc(100% + 32px); margin: 0 -16px 12px; display:block; object-fit: cover; max-height: 300px; cursor: zoom-in; border-bottom: 1px solid rgba(0,0,0,0.04); border-top: 1px solid rgba(0,0,0,0.04);}
 .post-file { display:flex; align-items:center; gap:8px; background: rgba(0,0,0,.03); padding: 12px; border-radius: var(--r-sm); text-decoration:none; color: var(--ink); font-weight:700; font-size:.9rem; margin-bottom: 12px; border:1px solid rgba(0,0,0,.04); transition: 0.15s; }
@@ -274,6 +282,9 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 #qrContainer { text-align: center; margin-top: 24px; display: none;}
 #qrContainer img { border: 10px solid white; border-radius: 12px; box-shadow: var(--sh-md);}
 
+/* ─────────────────────────────────────────────
+   SIDEBAR (관리자 패널)
+───────────────────────────────────────────── */
 .sidebar { position: fixed; top: 0; right: -420px; width: 420px; height: 100%; background: #f9f9f9; box-shadow: -4px 0 30px rgba(0,0,0,0.1); z-index: 1000; transition: right 0.3s var(--ease-spring); display: flex; flex-direction: column; border-left: 1px solid var(--border); }
 .sidebar.open { right: 0; }
 .sb-header { padding: 32px 32px 16px; display: flex; justify-content: space-between; align-items: center; background: transparent;}
@@ -311,4 +322,3 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 #toast { position:fixed; bottom:40px; left:50%; transform: translateX(-50%) translateY(20px); background: rgba(28,25,23,.9); color:#fff; padding: 12px 24px; border-radius:100px; font-size:.95rem; font-weight:800; z-index:9999; opacity:0; pointer-events:none; transition: opacity .2s, transform .2s var(--ease-spring); box-shadow: var(--sh-md);}
 #toast.show { opacity:1; transform: translateX(-50%) translateY(0); }
-</style>
