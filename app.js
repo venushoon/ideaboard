@@ -8,14 +8,6 @@ window.updateCanvasSize = () => {};
 window.currentLayout = 'canvas';
 
 /* ── 2. UI 공통 전역 함수 ── */
-window.showToast = msg => { 
-    const t = document.getElementById('toast'); 
-    if(!t) return;
-    t.textContent = msg; 
-    t.classList.add('show'); 
-    setTimeout(() => t.classList.remove('show'), 2500); 
-};
-
 document.querySelectorAll('.color-opt').forEach(opt => {
   opt.addEventListener('click', (e) => {
       document.querySelectorAll('.color-opt').forEach(el => el.classList.remove('active'));
@@ -37,8 +29,10 @@ window.closeModal = id => {
 window.closeBgClick = (e, id) => { if (e.target.id === id) window.closeModal(id); };
 window.openSidebar = () => { document.getElementById('sbOverlay').classList.add('active'); document.getElementById('adminSidebar').classList.add('open'); };
 window.closeSidebar = () => { document.getElementById('sbOverlay').classList.remove('active'); document.getElementById('adminSidebar').classList.remove('open'); };
+window.showToast = msg => { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2500); };
 window.openImageViewer = url => { document.getElementById('imageViewerImg').src = url; window.openModal('imageViewerModal'); };
 
+/* ── 3. 공유 기능 및 이미지 캡처 ── */
 window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
 window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
 
@@ -64,6 +58,7 @@ window.downloadPDF = async () => {
   } catch(e) { window.showToast('PDF 생성 실패'); } finally { tWrap.textContent = origText; iWrap.textContent = '📄'; }
 };
 
+/* ── 4. 파일 업로드 ── */
 window.currentFileData = null; 
 window.handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -115,9 +110,8 @@ window.getYoutubeId = function(url) {
     return (match && match[1]) ? match[1] : null;
 };
 
-
 // ─────────────────────────────────────────────
-// 5. Firebase 연동 및 하이브리드 로그인/마스터 관리 로직
+// 5. Firebase 연동 및 핵심 비즈니스 로직
 // ─────────────────────────────────────────────
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, push, remove, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
@@ -139,22 +133,24 @@ const db  = getDatabase(app);
 const auth = getAuth(app); 
 
 let currentUserUid = null;
-/* 🔥 이곳에 마스터 관리자 권한을 가질 구글 이메일을 입력하세요 */
-const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; 
+const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; // 마스터 관리자 이메일
 
 let myName = '';
 let likedPosts = {};
 try {
     myName = localStorage.getItem('learner_name') || '';
     likedPosts = JSON.parse(localStorage.getItem('liked_posts') || '{}');
-} catch(e) {}
+} catch(e) { console.warn("태블릿 시크릿 모드: 로컬 저장소가 제한됨."); }
 
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
-// 🌟 인증 및 라우팅 함수
+// 🌟 로그인 및 권한 관리 함수 (계정 선택 강제 옵션 추가!)
 window.signInWithGoogle = () => {
     const provider = new GoogleAuthProvider();
+    // 👇 구글 로그인 시 무조건 계정 선택 창이 뜨도록 강제하는 옵션입니다!
+    provider.setCustomParameters({ prompt: 'select_account' });
+    
     signInWithPopup(auth, provider).catch(error => {
         console.error(error);
         window.showToast("로그인 실패: " + error.message);
@@ -237,14 +233,15 @@ window.forceDeleteBoard = async (boardId, roomCode) => {
     }
 };
 
-// 로그인 상태 변경 감지
+// 인증 상태 감지
 onAuthStateChanged(auth, (user) => {
     if (user) {
         currentUserUid = user.uid;
         document.getElementById('userDisplayName').textContent = user.displayName || "선생님";
         
         if(user.email === MASTER_ADMIN_EMAIL) {
-            document.getElementById('adminBtn').style.display = 'block';
+            const adminBtn = document.getElementById('adminBtn');
+            if(adminBtn) adminBtn.style.display = 'block';
         }
 
         if(currentBoardId) initBoardApp(); 
@@ -731,7 +728,10 @@ function initBoardApp() {
             const p = allPostsData[id];
             const el = localPosts[id];
             if (el.parentElement !== document.getElementById('board')) document.getElementById('board').appendChild(el);
-            el.style.position = 'absolute'; el.style.left = (p.x || 80) + 'px'; el.style.top = (p.y || 80) + 'px'; el.style.transform = '';
+            el.style.position = 'absolute';
+            el.style.left = (p.x || 80) + 'px'; 
+            el.style.top = (p.y || 80) + 'px';
+            el.style.transform = '';
         });
         return;
     }
@@ -919,9 +919,10 @@ function initBoardApp() {
   function updateDragElementPosition() {
       if (!dragState.el) return;
       const boardEl = document.getElementById('board');
+      const boardRect = boardEl.getBoundingClientRect(); 
       
-      const x = ptrPos.x - dragState.offsetX + boardEl.scrollLeft;
-      const y = ptrPos.y - dragState.offsetY + boardEl.scrollTop;
+      const x = ptrPos.x - dragState.offsetX - boardRect.left + boardEl.scrollLeft;
+      const y = ptrPos.y - dragState.offsetY - boardRect.top + boardEl.scrollTop;
       
       dragState.el.style.left = x + 'px';
       dragState.el.style.top  = y + 'px';
@@ -938,7 +939,6 @@ function initBoardApp() {
       const boardEl = document.getElementById('board');
       const boardRect = boardEl.getBoundingClientRect();
 
-      // 🌟 브라우저 창(window)이 아닌, 실제 스크롤 영역(boardEl)을 밀어냄
       if (ptrPos.x > boardRect.right - EDGE) { boardEl.scrollLeft += SPEED; isScrolling = true; }
       else if (ptrPos.x < boardRect.left + EDGE) { boardEl.scrollLeft -= SPEED; isScrolling = true; }
 
