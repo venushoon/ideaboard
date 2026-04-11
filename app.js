@@ -39,7 +39,7 @@ window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrse
 window.downloadImage = async () => {
     window.showToast("이미지 저장 중...");
     try {
-        if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 외부 이미지가 캡처되지 않을 수 있습니다.");
+        if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 일부 외부 이미지가 캡처되지 않을 수 있습니다.");
         const canvas = await html2canvas(document.getElementById('board'), { scale: 2, useCORS: true, backgroundColor: document.body.style.backgroundColor || '#f9fafb' });
         const link = document.createElement('a'); link.download = `아이디어보드_${Date.now()}.png`; link.href = canvas.toDataURL('image/png'); link.click(); window.closeModal('shareModal');
     } catch(e) { window.showToast("캡처 실패 (서버 환경 필요)"); }
@@ -49,7 +49,7 @@ window.downloadPDF = async () => {
   const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
   const origText = tWrap.textContent; tWrap.textContent = '생성 중…'; iWrap.textContent = '⏳';
   try {
-    if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 외부 이미지가 캡처되지 않을 수 있습니다.");
+    if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 일부 외부 이미지가 PDF에 안 나올 수 있습니다.");
     const canvas = await html2canvas(document.getElementById('board'), { scale: 2, useCORS: true, backgroundColor: document.body.style.backgroundColor || '#f9fafb' });
     const pdf = new jspdf.jsPDF('l', 'mm', 'a4');
     const w = pdf.internal.pageSize.getWidth(); const h = (canvas.height * w) / canvas.width;
@@ -135,12 +135,12 @@ let likedPosts = {};
 try {
     myName = localStorage.getItem('learner_name') || '';
     likedPosts = JSON.parse(localStorage.getItem('liked_posts') || '{}');
-} catch(e) { console.warn("로컬 저장소 접근 제한 상태"); }
+} catch(e) { console.warn("태블릿 시크릿 모드: 로컬 저장소가 제한됨."); }
 
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
-// 🌟 로비 전용: 용량(사진) 계산 및 일괄 삭제 기능
+// 🌟 로비 전용: 용량 계산 및 일괄 삭제
 window.openStorageManager = () => {
     document.getElementById('storageText').innerHTML = "용량을 계산해볼까요?";
     document.getElementById('calcBtn').style.display = 'inline-block';
@@ -164,7 +164,7 @@ window.calculateStorage = async () => {
             if(board.posts) {
                 Object.values(board.posts).forEach(post => {
                     if(post.fileData && post.fileData.url) {
-                        totalBytes += post.fileData.url.length; // Base64 길이로 Byte 추정
+                        totalBytes += post.fileData.url.length; 
                         fileCount++;
                     }
                 });
@@ -200,7 +200,7 @@ window.cleanUpFiles = async () => {
             if(posts) {
                 Object.keys(posts).forEach(postId => {
                     if(posts[postId].fileData) {
-                        updates[`boards/${boardId}/posts/${postId}/fileData`] = null; // 사진 필드만 파괴
+                        updates[`boards/${boardId}/posts/${postId}/fileData`] = null; 
                     }
                 });
             }
@@ -375,14 +375,12 @@ else {
       let maxX = window.innerWidth;
       let maxY = window.innerHeight;
       
-      // 저장된 포스트들의 좌표를 기반으로 최대 범위 계산
       Object.keys(allPostsData).forEach(id => {
           const p = allPostsData[id];
           if (p.x && p.x + 350 > maxX) maxX = p.x + 350;
           if (p.y && p.y + 350 > maxY) maxY = p.y + 350;
       });
 
-      // 현재 드래그 중인 아이템의 좌표까지 포함
       if (dragState.el) {
           const dragX = parseFloat(dragState.el.style.left) || 0;
           const dragY = parseFloat(dragState.el.style.top) || 0;
@@ -390,7 +388,6 @@ else {
           if (dragY + 350 > maxY) maxY = dragY + 350;
       }
 
-      // 화면을 억지로 넓히기 위해 가장 끝 좌표에 투명한 블록(Spacer) 배치
       const board = document.getElementById('board');
       let spacer = document.getElementById('canvas-spacer');
       if (!spacer) {
@@ -560,8 +557,11 @@ else {
     el.addEventListener('dragover', (e) => e.preventDefault());
     el.addEventListener('drop', (e) => handleDropOnWall(e, id)); 
     
+    // 🌟 터치 기기용 완벽 캡처 로직 (태블릿 드래그 오류 우회)
     el.addEventListener('pointerdown', e => {
-        if(window.currentLayout === 'canvas') startFreeDrag(e, id, el);
+        if(window.currentLayout === 'canvas') {
+            startFreeDrag(e, id, el);
+        }
     });
     return el;
   }
@@ -855,12 +855,17 @@ else {
     window.location.href = window.location.href.split('?')[0].split('#')[0];
   };
 
-  const dragState = { id: null, offsetX: 0, offsetY: 0, el: null };
+  /* ── 🌟 캔버스 모드 모바일/PC 드래그 완벽 구현 (Lag Free) ── */
+  const dragState = { id: null, offsetX: 0, offsetY: 0, el: null, pointerId: null };
+  
   function startFreeDrag (e, id, el) {
     if (window.currentLayout !== 'canvas') return; 
     if (e.target.closest('.delete-btn,.edit-btn,.like-btn,.comment-input,.post-link,.post-img,.post-file,.yt-thumb-wrap')) return;
 
-    dragState.id = id; dragState.el = el;
+    dragState.id = id; 
+    dragState.el = el;
+    dragState.pointerId = e.pointerId; // 🌟 터치 놓침 방지용 ID 저장
+    
     const rect = el.getBoundingClientRect();
     dragState.offsetX = e.clientX - rect.left;
     dragState.offsetY = e.clientY - rect.top;
@@ -869,31 +874,50 @@ else {
     el.classList.add('dragging');
     document.body.classList.add('is-dragging');
 
+    // 🌟 터치 기기에서 스크롤을 막고 요소를 꽉 잡고 있도록 캡처
+    try { el.setPointerCapture(e.pointerId); } catch(e){}
+
     document.addEventListener('pointermove', onMove, { passive: false });
     document.addEventListener('pointerup', onUp, { once: true });
+    document.addEventListener('pointercancel', onUp, { once: true });
   }
   
   function onMove (e) {
     if (!dragState.id) return; e.preventDefault();
     const boardEl = document.getElementById('board');
+    
+    // 현재 마우스/터치 위치에 스크롤바 이동값 합산
     const x = e.clientX - dragState.offsetX + boardEl.scrollLeft;
     const y = e.clientY - dragState.offsetY + boardEl.scrollTop;
     
-    dragState.el.style.left = x + 'px'; dragState.el.style.top  = y + 'px';
+    dragState.el.style.left = x + 'px'; 
+    dragState.el.style.top  = y + 'px';
+    
     if (window.currentLayout === 'canvas') {
-        update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x, y });
-        window.updateCanvasSize(); // 🌟 실시간 확장 로직
+        window.updateCanvasSize(); // 🌟 드래그 중에 화면을 벗어나면 지지대를 밀어내어 무한확장!
     }
   }
   
   function onUp (e) {
     if (!dragState.id) return;
     const el = dragState.el;
+    
+    // 🌟 손가락을 떼었을 때 딱 1번만 Firebase 서버에 전송 (모바일 버벅임 원천 차단)
+    const finalX = parseFloat(el.style.left) || 80;
+    const finalY = parseFloat(el.style.top) || 80;
+    update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x: finalX, y: finalY });
+
+    try { el.releasePointerCapture(dragState.pointerId); } catch(e){}
+    
     el.classList.remove('dragging');
     el.style.zIndex = '';
     document.body.classList.remove('is-dragging');
-    dragState.id = null; dragState.el = null;
+    
+    dragState.id = null; 
+    dragState.el = null;
+    
     document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointercancel', onUp);
   }
 
   function handleDragStart(e, id) {
