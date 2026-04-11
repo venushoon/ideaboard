@@ -315,3 +315,25 @@ input:checked + .slider:before { transform: translateX(20px); }
 #toast { position:fixed; bottom:40px; left:50%; transform: translateX(-50%) translateY(20px); background: rgba(28,25,23,.9); color:#fff; padding: 12px 24px; border-radius:100px; font-size:.95rem; font-weight:800; z-index:9999; opacity:0; pointer-events:none; transition: opacity .2s, transform .2s var(--ease-spring); box-shadow: var(--sh-md);}
 #toast.show { opacity:1; transform: translateX(-50%) translateY(0); }
 </style>
+/* ... (기존 style.css 코드 유지) ... */
+
+/* 🌟 로그인 화면 스타일 추가 */
+#loginView { width:100vw; height:100vh; flex-direction:column; align-items:center; justify-content:center; background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); position: absolute; z-index: 99999; top: 0; left: 0;}
+.login-container { background: white; padding: 48px; border-radius: 24px; box-shadow: var(--sh-lg); text-align: center; max-width: 420px; width: 90%; }
+.login-logo { font-family: 'Noto Serif KR', serif; font-size: 2rem; font-weight: 900; color: var(--ink); margin: 0 0 12px 0; }
+.login-sub { color: var(--ink-3); font-size: 1rem; margin: 0 0 40px 0; line-height: 1.5; }
+.login-box { display: flex; flex-direction: column; gap: 20px; }
+
+.btn-google { display: flex; align-items: center; justify-content: center; gap: 12px; background: white; border: 1px solid var(--border); padding: 14px; border-radius: 12px; font-size: 1.05rem; font-weight: 800; cursor: pointer; transition: 0.2s; box-shadow: var(--sh-sm); color: var(--ink-2);}
+.btn-google img { width: 24px; height: 24px; }
+.btn-google:hover { background: var(--cream); border-color: var(--ink-3); box-shadow: var(--sh-md); transform: translateY(-2px);}
+
+.login-divider { position: relative; text-align: center; margin: 10px 0; }
+.login-divider::before { content: ""; position: absolute; top: 50%; left: 0; right: 0; border-top: 1px solid var(--border); z-index: 1; }
+.login-divider span { position: relative; z-index: 2; background: white; padding: 0 16px; font-size: 0.85rem; font-weight: 700; color: var(--ink-3); }
+
+.code-box { display: flex; gap: 8px; }
+.code-input { flex: 1; padding: 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 1.1rem; text-align: center; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; outline: none; transition: 0.2s;}
+.code-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.btn-enter { background: var(--navy); color: white; border: none; padding: 0 24px; border-radius: 12px; font-weight: 800; font-size: 1rem; cursor: pointer; transition: 0.2s; white-space: nowrap;}
+.btn-enter:hover { background: #1e3a8a; transform: translateY(-2px); box-shadow: var(--sh-md); }
