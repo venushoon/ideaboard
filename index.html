@@ -13,6 +13,17 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css">
 <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/scroll-behaviour.min.js"></script>
+<script>
+    // 태블릿/전자칠판 드래그 즉시 활성화
+    window.addEventListener('DOMContentLoaded', () => {
+        MobileDragDrop.polyfill({
+            holdToDrag: 200, // 0.2초 꾹 누르면 스크롤 대신 드래그 시작
+            dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride
+        });
+        window.addEventListener('touchmove', function() {}, {passive: false});
+    });
+</script>
 
 <link rel="stylesheet" href="style.css">
 </head>
