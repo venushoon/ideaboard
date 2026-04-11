@@ -4,11 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>나만의 아이디어 보드 (Ultimate)</title>
-<link rel="icon" href="data:,"> <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Serif+KR:wght@400;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css">
+<script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
 
 <link rel="stylesheet" href="style.css">
 </head>
@@ -26,6 +30,11 @@
   <main class="lobby-main">
     <p class="section-label">내 보드 목록</p>
     <div class="board-grid" id="boardGrid"></div>
+
+    <div id="trashSection" style="margin-top: 64px; display: none;">
+      <p class="section-label" style="color: var(--ink-3);">🗑️ 휴지통 (삭제 후 3일 뒤 완전 삭제)</p>
+      <div class="board-grid" id="trashGrid"></div>
+    </div>
   </main>
 </div>
 
@@ -238,13 +247,11 @@
       </div>
     </div>
 
-    <button class="btn-danger" onclick="clearBoard()">🗑️ 게시물 전체 삭제 및 초기화</button>
+    <button class="btn-danger" onclick="clearBoard()">🗑️ 현재 보드의 게시물 전체 삭제</button>
   </div>
 </aside>
 
 <div id="toast"></div>
-
 <script type="module" src="app.js"></script>
-
 </body>
 </html>
