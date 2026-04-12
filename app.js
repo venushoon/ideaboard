@@ -8,6 +8,14 @@ window.updateCanvasSize = () => {};
 window.currentLayout = 'canvas';
 
 /* ── 2. UI 공통 전역 함수 ── */
+window.showToast = msg => { 
+    const t = document.getElementById('toast'); 
+    if(!t) return;
+    t.textContent = msg; 
+    t.classList.add('show'); 
+    setTimeout(() => t.classList.remove('show'), 2500); 
+};
+
 document.querySelectorAll('.color-opt').forEach(opt => {
   opt.addEventListener('click', (e) => {
       document.querySelectorAll('.color-opt').forEach(el => el.classList.remove('active'));
@@ -29,10 +37,8 @@ window.closeModal = id => {
 window.closeBgClick = (e, id) => { if (e.target.id === id) window.closeModal(id); };
 window.openSidebar = () => { document.getElementById('sbOverlay').classList.add('active'); document.getElementById('adminSidebar').classList.add('open'); };
 window.closeSidebar = () => { document.getElementById('sbOverlay').classList.remove('active'); document.getElementById('adminSidebar').classList.remove('open'); };
-window.showToast = msg => { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2500); };
 window.openImageViewer = url => { document.getElementById('imageViewerImg').src = url; window.openModal('imageViewerModal'); };
 
-/* ── 3. 공유 기능 및 이미지 캡처 ── */
 window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
 window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
 
@@ -58,7 +64,6 @@ window.downloadPDF = async () => {
   } catch(e) { window.showToast('PDF 생성 실패'); } finally { tWrap.textContent = origText; iWrap.textContent = '📄'; }
 };
 
-/* ── 4. 파일 업로드 ── */
 window.currentFileData = null; 
 window.handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -110,8 +115,9 @@ window.getYoutubeId = function(url) {
     return (match && match[1]) ? match[1] : null;
 };
 
+
 // ─────────────────────────────────────────────
-// 5. Firebase 연동 및 핵심 비즈니스 로직
+// 5. Firebase 연동 및 하이브리드 로그인/마스터 관리 로직
 // ─────────────────────────────────────────────
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, push, remove, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
@@ -133,22 +139,21 @@ const db  = getDatabase(app);
 const auth = getAuth(app); 
 
 let currentUserUid = null;
-const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; // 마스터 관리자 이메일
+const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; 
 
 let myName = '';
 let likedPosts = {};
 try {
     myName = localStorage.getItem('learner_name') || '';
     likedPosts = JSON.parse(localStorage.getItem('liked_posts') || '{}');
-} catch(e) { console.warn("태블릿 시크릿 모드: 로컬 저장소가 제한됨."); }
+} catch(e) {}
 
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
-// 🌟 로그인 및 권한 관리 함수 (계정 선택 강제 옵션 추가!)
+// 🌟 로그인 및 권한 관리 함수 (계정 선택 창 띄우기 옵션 유지)
 window.signInWithGoogle = () => {
     const provider = new GoogleAuthProvider();
-    // 👇 구글 로그인 시 무조건 계정 선택 창이 뜨도록 강제하는 옵션입니다!
     provider.setCustomParameters({ prompt: 'select_account' });
     
     signInWithPopup(auth, provider).catch(error => {
@@ -179,7 +184,6 @@ window.enterWithCode = async () => {
     }
 };
 
-// 🌟 마스터 대시보드 로직
 window.openMasterAdmin = async () => {
     window.openModal('adminModal');
     const listEl = document.getElementById('adminBoardList');
@@ -233,11 +237,16 @@ window.forceDeleteBoard = async (boardId, roomCode) => {
     }
 };
 
-// 인증 상태 감지
+// 🌟 인증 상태 감지 (이름 자동 설정 핵심)
 onAuthStateChanged(auth, (user) => {
     if (user) {
         currentUserUid = user.uid;
-        document.getElementById('userDisplayName').textContent = user.displayName || "선생님";
+        
+        // 🌟 선생님 (구글 로그인)인 경우 이름 팝업을 띄우지 않도록 myName 자동 채우기!
+        myName = user.displayName || "선생님";
+        try { localStorage.setItem('learner_name', myName); } catch(e) {}
+        
+        document.getElementById('userDisplayName').textContent = myName;
         
         if(user.email === MASTER_ADMIN_EMAIL) {
             const adminBtn = document.getElementById('adminBtn');
@@ -248,7 +257,7 @@ onAuthStateChanged(auth, (user) => {
         else initLobbyApp(); 
     } else {
         if(currentBoardId) {
-            initBoardApp(); 
+            initBoardApp(); // 게스트 입장 (아래 initBoardApp에서 이름 묻는 팝업 실행됨)
         } else {
             document.getElementById('loginView').style.display = 'flex';
             document.getElementById('lobbyView').style.display = 'none';
@@ -257,7 +266,7 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// ── 로비 앱 ──
+// ── 로비 렌더링 ──
 function initLobbyApp() {
     document.getElementById('loginView').style.display = 'none';
     document.getElementById('appView').style.display  = 'none';
@@ -355,7 +364,6 @@ function initLobbyApp() {
         grid.innerHTML = ''; trashGrid.innerHTML = '';
         let hasTrash = false; const now = Date.now();
         
-        // 내 보드 + 마스터 권한 필터링
         const myBoards = Object.keys(data)
             .map(k => ({ id: k, ...data[k] }))
             .filter(b => b.ownerUid === currentUserUid || (auth.currentUser && auth.currentUser.email === MASTER_ADMIN_EMAIL))
@@ -483,8 +491,11 @@ function initBoardApp() {
       else if (window.currentLayout === 'canvas') window.updateCanvasSize();
   });
 
+  // 🌟 핵심: 선생님(구글로그인)은 myName이 있으므로 팝업 무시, 학생(게스트)만 팝업!
   function ensureName () {
-    if (myName) return; window.openModal('nameModal'); setTimeout(() => document.getElementById('nameInput').focus(), 100);
+    if (myName) return; 
+    window.openModal('nameModal'); 
+    setTimeout(() => document.getElementById('nameInput').focus(), 100);
   }
   window.confirmName = () => {
     const v = document.getElementById('nameInput').value.trim();
@@ -492,6 +503,8 @@ function initBoardApp() {
     try { localStorage.setItem('learner_name', myName); } catch(e) {}
     window.closeModal('nameModal');
   };
+  
+  // 보드 앱 시작 시 이름 확인 호출
   ensureName();
 
   update(metaRef, { updatedAt: Date.now(), deletedAt: null });
@@ -754,11 +767,13 @@ function initBoardApp() {
     const parentContainers = Object.values(localColEls).map(c => c.querySelector('.column-body'));
     
     Object.keys(localPosts).forEach(id => {
-        const p = allPostsData[id]; if(!p) return;
+        const p = allPostsData[id];
+        if(!p) return;
         const el = localPosts[id];
         const firstCid = Object.keys(localColumnsData)[0];
         const bodyId   = `colbody-${p.columnId || firstCid}`;
         const target = document.getElementById(bodyId) || board;
+        
         if (el.parentElement !== target && (!dragState.id || dragState.id !== id)) target.appendChild(el);
     });
 
