@@ -56,7 +56,7 @@ window.downloadImage = async () => {
         }
 
         const canvas = await html2canvas(boardEl, { 
-            scale: 1.5, // 2에서 1.5로 줄여 화질은 유지하고 용량 절감
+            scale: 1.5, 
             useCORS: true, 
             backgroundColor: document.body.style.backgroundColor || '#f9fafb'
         });
@@ -68,28 +68,31 @@ window.downloadImage = async () => {
 
         const link = document.createElement('a');
         link.download = `아이디어보드_${Date.now()}.jpg`;
-        link.href = canvas.toDataURL('image/jpeg', 0.8); // PNG 대신 JPEG로 압축
+        link.href = canvas.toDataURL('image/jpeg', 0.8); 
         link.click();
         window.closeModal('shareModal');
     } catch(e) { window.showToast("이미지 저장 실패"); }
 };
 
-/* ── 🌟 3-2. 스마트 PDF 엔진 (세로형 + 핀터레스트 자동 줄바꿈) ── */
+/* ── 🌟 3-2. 스마트 PDF 엔진 (픽스 적용 완료) ── */
 window.downloadPDF = async () => {
     const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
     const origText = tWrap.textContent; tWrap.textContent = '문서 최적화 중…'; iWrap.textContent = '⏳';
     
+    let pdfContainer = null; // finally에서 삭제하기 위해 스코프 상단에 선언
+
     try {
         window.showToast("보고서를 구성하고 있습니다...");
         const boardTitle = document.getElementById('boardTitleText').textContent;
         const posts = Array.from(document.querySelectorAll('.post-it'));
         if(posts.length === 0) { window.showToast("내보낼 내용이 없습니다."); return; }
 
-        const pdfContainer = document.createElement('div');
-        pdfContainer.style.cssText = 'position:absolute; top:-9999px; left:-9999px; width:800px; padding:40px; background:white;';
+        pdfContainer = document.createElement('div');
+        // 🔴 FIX: -9999px 대신 레이아웃 계산을 정확히 하도록 투명하게 덮어둠
+        pdfContainer.style.cssText = 'position:absolute; top:0; left:0; z-index:-100; opacity:0; pointer-events:none; width:800px; padding:40px; background:white;';
         document.body.appendChild(pdfContainer);
 
-        const PAGE_MAX_HEIGHT = 1050; // A4 세로 비율 한계 높이
+        const PAGE_MAX_HEIGHT = 1050; 
         let pageNum = 1;
         let currentPage = createPdfVerticalPage(boardTitle, pageNum);
         pdfContainer.appendChild(currentPage);
@@ -99,16 +102,14 @@ window.downloadPDF = async () => {
 
         for (const post of posts) {
             const clone = post.cloneNode(true);
-            // 불필요한 UI 제거
             const btns = clone.querySelector('.post-btns'); if(btns) btns.remove();
             const cInput = clone.querySelector('.comment-input'); if(cInput) cInput.remove();
             clone.style.cssText = 'position:relative; width:100%; margin-bottom:20px; break-inside:avoid; border:1px solid #eee; box-shadow:0 1px 3px rgba(0,0,0,0.05);';
 
-            // 더 짧은 컬럼에 배치 (Masonry 정렬)
             if (leftCol.offsetHeight <= rightCol.offsetHeight) leftCol.appendChild(clone);
             else rightCol.appendChild(clone);
 
-            // A4 페이지 높이를 초과하면 새 페이지 생성
+            // 🔴 FIX: 이제 정확한 높이(offsetHeight)가 계산되어 페이지가 완벽히 나뉨
             if (currentPage.offsetHeight > PAGE_MAX_HEIGHT) {
                 const overItem = clone;
                 overItem.remove(); 
@@ -129,7 +130,7 @@ window.downloadPDF = async () => {
 
         for (let i = 0; i < pages.length; i++) {
             const canvas = await html2canvas(pages[i], { scale: 1.5, useCORS: true });
-            const imgData = canvas.toDataURL('image/jpeg', 0.75); // JPEG 압축률 75%로 용량 최소화
+            const imgData = canvas.toDataURL('image/jpeg', 0.75); 
             const imgProps = doc.getImageProperties(imgData);
             const pdfWidth = doc.internal.pageSize.getWidth();
             const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
@@ -141,10 +142,16 @@ window.downloadPDF = async () => {
         doc.save(`[보관용]_${boardTitle}_${Date.now()}.pdf`);
         window.showToast("보고서가 생성되었습니다.");
         window.closeModal('shareModal');
-        document.body.removeChild(pdfContainer);
 
-    } catch(e) { console.error(e); window.showToast("PDF 생성 실패"); }
-    finally { tWrap.textContent = origText; iWrap.textContent = '📄'; }
+    } catch(e) { 
+        console.error(e); window.showToast("PDF 생성 실패"); 
+    } finally { 
+        tWrap.textContent = origText; iWrap.textContent = '📄'; 
+        // 🔴 FIX: 에러가 나도 DOM에 남지 않도록 완벽히 청소
+        if(pdfContainer && document.body.contains(pdfContainer)) {
+            document.body.removeChild(pdfContainer);
+        }
+    }
 };
 
 function createPdfVerticalPage(title, num) {
@@ -349,6 +356,7 @@ onAuthStateChanged(auth, (user) => {
         try { localStorage.setItem('learner_name', myName); } catch(e) {}
         
         document.getElementById('userDisplayName').textContent = myName;
+        // 인라인 스타일과 충돌 방지를 위해 직접 display 제어
         document.getElementById('withdrawBtn').style.display = 'block'; 
         
         if(user.email === MASTER_ADMIN_EMAIL) {
@@ -436,10 +444,22 @@ function initLobbyApp() {
         update(ref(db, `board_meta/${boardId}`), { deletedAt: null }); window.showToast('복구됨');
     };
 
-    window.hardDeleteBoard = (boardId, e) => {
+    // 🔴 FIX: 로비에서 휴지통 영구 삭제 시에도 roomCode 완벽 삭제 처리
+    window.hardDeleteBoard = async (boardId, e) => {
         e.stopPropagation();
         if (confirm('영구 삭제하시겠습니까?')) {
-            remove(ref(db, `boards/${boardId}`)); remove(ref(db, `board_meta/${boardId}`)); window.showToast('영구 삭제됨');
+            try {
+                const metaSnap = await get(ref(db, `board_meta/${boardId}`));
+                const roomCode = metaSnap.val()?.roomCode;
+                
+                await remove(ref(db, `boards/${boardId}`)); 
+                await remove(ref(db, `board_meta/${boardId}`)); 
+                if(roomCode) await remove(ref(db, `room_codes/${roomCode}`));
+                
+                window.showToast('영구 삭제됨');
+            } catch (err) {
+                window.showToast('삭제 중 오류 발생');
+            }
         }
     };
 
@@ -485,16 +505,25 @@ function initLobbyApp() {
         trashSection.style.display = hasTrash ? 'block' : 'none';
     });
 
-    window.createBoardFromLobby = () => {
+    // 🔴 FIX: 방 생성 시 무결성 보장 (방 코드가 우연히 겹치는 문제 원천 차단)
+    window.createBoardFromLobby = async () => {
         const name = prompt('새 보드 이름:');
         if (name?.trim()) { 
             const newBoardId = push(ref(db, 'boards')).key; 
-            const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase(); 
             
-            set(ref(db, `board_meta/${newBoardId}`), {
+            let roomCode;
+            let isUnique = false;
+            while(!isUnique) {
+                roomCode = Math.random().toString(36).substring(2, 8).toUpperCase(); 
+                const snap = await get(ref(db, `room_codes/${roomCode}`));
+                if(!snap.exists()) isUnique = true;
+            }
+            
+            await set(ref(db, `board_meta/${newBoardId}`), {
                 title: name.trim(), ownerUid: currentUserUid, roomCode: roomCode, updatedAt: Date.now()
             });
-            set(ref(db, `room_codes/${roomCode}`), newBoardId);
+            await set(ref(db, `room_codes/${roomCode}`), newBoardId);
+            
             window.location.hash = `board=${newBoardId}`; window.location.reload(); 
         }
     };
@@ -1047,9 +1076,10 @@ function initBoardApp() {
       autoScrollRAF = requestAnimationFrame(autoScrollLoop);
   }
 
+  // 🔴 FIX: 가장 정확한 클래스명 타겟팅으로 드래그 충돌 원천 차단
   function startFreeDrag (e, id, el) {
     if (window.currentLayout !== 'canvas') return; 
-    if (e.target.closest('.delete-btn,.edit-btn,.like-btn,.comment-input,.post-link,.post-img,.post-file,.yt-thumb-wrap')) return;
+    if (e.target.closest('.del, .edit, .like-btn, .comment-input, .post-link, .post-img, .post-file, .yt-thumb-wrap, a, button')) return;
 
     dragState.id = id; 
     dragState.el = el;
@@ -1105,7 +1135,7 @@ function initBoardApp() {
 
   function handleDragStart(e, id) {
       if(window.currentLayout === 'canvas') { e.preventDefault(); return; }
-      if (e.target.closest('.post-btn,.like-btn,.comment-input,.post-link,.post-img,.post-file,.yt-thumb-wrap')) { e.preventDefault(); return; }
+      if (e.target.closest('.del, .edit, .like-btn, .comment-input, .post-link, .post-img, .post-file, .yt-thumb-wrap, a, button')) { e.preventDefault(); return; }
       
       e.dataTransfer.setData('text/plain', id);
       e.dataTransfer.effectAllowed = 'move';
