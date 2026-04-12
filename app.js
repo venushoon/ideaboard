@@ -42,28 +42,23 @@ window.openImageViewer = url => { document.getElementById('imageViewerImg').src 
 window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
 window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
 
-/* ── 3-1. 이미지 캡처 (단일 조감도 - 기존 기능 유지) ── */
+/* ── 3-1. 이미지 캡처 (최적화 적용) ── */
 window.downloadImage = async () => {
-    window.showToast("이미지 저장 중...");
+    window.showToast("고화질 이미지 생성 중...");
     try {
-        if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 일부 외부 이미지가 캡처되지 않을 수 있습니다.");
-        
         const boardEl = document.getElementById('board');
         const origWidth = boardEl.style.minWidth;
         const origHeight = boardEl.style.minHeight;
         
-        // 캔버스 모드일 경우 숨겨진 스크롤 영역까지 캡처하기 위해 크기 임시 강제 확장
         if(window.currentLayout === 'canvas') {
             boardEl.style.minWidth = boardEl.scrollWidth + 'px';
             boardEl.style.minHeight = boardEl.scrollHeight + 'px';
         }
 
         const canvas = await html2canvas(boardEl, { 
-            scale: 2, 
+            scale: 1.5, // 용량 최적화 위해 2 -> 1.5 조정
             useCORS: true, 
-            backgroundColor: document.body.style.backgroundColor || '#f9fafb',
-            windowWidth: boardEl.scrollWidth,
-            windowHeight: boardEl.scrollHeight
+            backgroundColor: document.body.style.backgroundColor || '#f9fafb'
         });
         
         if(window.currentLayout === 'canvas') {
@@ -71,128 +66,108 @@ window.downloadImage = async () => {
             boardEl.style.minHeight = origHeight;
         }
 
-        const link = document.createElement('a'); link.download = `아이디어보드_${Date.now()}.png`; link.href = canvas.toDataURL('image/png'); link.click(); window.closeModal('shareModal');
-    } catch(e) { window.showToast("캡처 실패 (서버 환경 필요)"); }
+        const link = document.createElement('a');
+        link.download = `아이디어보드_${Date.now()}.jpg`;
+        // 용량 절감을 위해 PNG 대신 JPEG 사용 (품질 0.8)
+        link.href = canvas.toDataURL('image/jpeg', 0.8);
+        link.click();
+        window.closeModal('shareModal');
+    } catch(e) { window.showToast("이미지 저장 실패"); }
 };
 
-/* ── 🌟 3-2. 스마트 PDF 내보내기 (다페이지 Pagination Algorithm) ── */
+/* ── 🌟 3-2. 스마트 PDF 엔진 (세로형 + 핀터레스트 + 용량 최적화) ── */
 window.downloadPDF = async () => {
     const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
-    const origText = tWrap.textContent; tWrap.textContent = '문서 생성 중…'; iWrap.textContent = '⏳';
+    const origText = tWrap.textContent; tWrap.textContent = '문서 최적화 중…'; iWrap.textContent = '⏳';
     
     try {
-        window.showToast("PDF 문서를 구성하고 있습니다...");
         const boardTitle = document.getElementById('boardTitleText').textContent;
         const posts = Array.from(document.querySelectorAll('.post-it'));
-        
-        if(posts.length === 0) {
-            window.showToast("내보낼 게시물이 없습니다."); return;
-        }
+        if(posts.length === 0) { window.showToast("내보낼 내용이 없습니다."); return; }
 
-        // 1. 가상 렌더링을 위한 컨테이너 생성 (화면 밖 숨김 처리)
+        // 가상 컨테이너 생성 (A4 세로 기준 너비 설정)
         const pdfContainer = document.createElement('div');
-        pdfContainer.style.position = 'absolute';
-        pdfContainer.style.top = '-9999px';
-        pdfContainer.style.left = '-9999px';
-        pdfContainer.style.width = '1122px'; // A4 가로 픽셀 사이즈 (약 297mm)
-        pdfContainer.style.backgroundColor = document.body.style.backgroundColor || '#f9fafb';
-        pdfContainer.style.padding = '40px';
-        pdfContainer.style.fontFamily = document.body.style.fontFamily;
+        pdfContainer.style.cssText = 'position:absolute; top:-9999px; left:-9999px; width:800px; padding:40px; background:white;';
         document.body.appendChild(pdfContainer);
 
-        // A4 1장의 대략적인 최대 높이 한계선 (여백 포함)
-        const PAGE_HEIGHT_LIMIT = 750; 
-        
-        let currentPage = createPdfPage(boardTitle, 1);
+        const PAGE_MAX_HEIGHT = 1050; // A4 세로 비율에 맞춘 한계 높이
+        let pageNum = 1;
+        let currentPage = createPdfVerticalPage(boardTitle, pageNum);
         pdfContainer.appendChild(currentPage);
         
-        let currentGrid = currentPage.querySelector('.pdf-grid');
-        let pageCount = 1;
+        // 핀터레스트 방식 배치를 위한 컬럼 2개 설정
+        let leftCol = currentPage.querySelector('.col-left');
+        let rightCol = currentPage.querySelector('.col-right');
 
-        // 2. 포스트잇 데이터를 가상 A4 용지에 차곡차곡 삽입
-        for (let i = 0; i < posts.length; i++) {
-            const originalPost = posts[i];
-            
-            // 데이터 복제 및 UI 정제 (버튼 등 불필요한 요소 제거)
-            const postClone = originalPost.cloneNode(true);
-            postClone.style.position = 'relative';
-            postClone.style.left = 'auto';
-            postClone.style.top = 'auto';
-            postClone.style.transform = 'none';
-            postClone.style.width = '100%';
-            postClone.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
-            postClone.style.marginBottom = '20px';
-            
-            // 편집/삭제 버튼, 댓글 입력창 등 제거
-            const btns = postClone.querySelector('.post-btns'); if(btns) btns.remove();
-            const cInput = postClone.querySelector('.comment-input'); if(cInput) cInput.remove();
-            
-            // 일단 현재 페이지의 그리드에 붙여봄
-            currentGrid.appendChild(postClone);
-            
-            // 🌟 핵심: 방금 붙인 포스트잇 때문에 용지 높이를 초과했는지 검사
-            if (currentPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
-                // 초과했다면 방금 붙인 걸 다시 떼어냄
-                currentGrid.removeChild(postClone);
+        for (const post of posts) {
+            const clone = post.cloneNode(true);
+            // UI 정제
+            const btns = clone.querySelector('.post-btns'); if(btns) btns.remove();
+            const cInput = clone.querySelector('.comment-input'); if(cInput) cInput.remove();
+            clone.style.cssText = 'position:relative; width:100%; margin-bottom:20px; break-inside:avoid; border:1px solid #eee;';
+
+            // 더 짧은 컬럼을 찾아 배치 (Masonry 기본 원리)
+            if (leftCol.offsetHeight <= rightCol.offsetHeight) {
+                leftCol.appendChild(clone);
+            } else {
+                rightCol.appendChild(clone);
+            }
+
+            // 페이지 높이 초과 시 새 페이지 생성
+            if (currentPage.offsetHeight > PAGE_MAX_HEIGHT) {
+                const overItem = clone;
+                overItem.remove(); // 방금 넣은 거 뺌
                 
-                // 새 A4 용지(페이지) 생성
-                pageCount++;
-                currentPage = createPdfPage(boardTitle, pageCount);
+                pageNum++;
+                currentPage = createPdfVerticalPage(boardTitle, pageNum);
                 pdfContainer.appendChild(currentPage);
-                currentGrid = currentPage.querySelector('.pdf-grid');
+                leftCol = currentPage.querySelector('.col-left');
+                rightCol = currentPage.querySelector('.col-right');
                 
-                // 새 페이지의 그리드에 다시 붙임
-                currentGrid.appendChild(postClone);
+                leftCol.appendChild(overItem); // 새 페이지에 다시 배치
             }
         }
 
-        // 3. 생성된 가상 페이지들을 캡처하여 PDF로 병합
-        const pdf = new jspdf.jsPDF('l', 'mm', 'a4');
-        const pages = pdfContainer.querySelectorAll('.pdf-page');
-        
+        // PDF 생성 (Orientation: 'p' for Portrait, Compress: true)
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+        const pages = pdfContainer.querySelectorAll('.pdf-v-page');
+
         for (let i = 0; i < pages.length; i++) {
-            const canvas = await html2canvas(pages[i], { scale: 2, useCORS: true });
-            const imgData = canvas.toDataURL('image/png');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-            
-            if (i > 0) pdf.addPage(); // 2페이지부터는 새 장 추가
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            const canvas = await html2canvas(pages[i], { scale: 1.5, useCORS: true });
+            // 용량 최적화의 핵심: JPEG 압축 사용
+            const imgData = canvas.toDataURL('image/jpeg', 0.75); 
+            const imgProps = doc.getImageProperties(imgData);
+            const pdfWidth = doc.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+            if (i > 0) doc.addPage();
+            doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
         }
 
-        pdf.save(`아이디어보드_${boardTitle}_${Date.now()}.pdf`);
-        window.showToast('스마트 PDF 저장 완료!');
+        doc.save(`[보관용]_${boardTitle}_${Date.now()}.pdf`);
+        window.showToast("보고서가 생성되었습니다.");
         window.closeModal('shareModal');
-
-        // 청소
         document.body.removeChild(pdfContainer);
 
-    } catch(e) { 
-        console.error(e);
-        window.showToast('PDF 생성 중 오류가 발생했습니다.'); 
-    } finally { 
-        tWrap.textContent = origText; iWrap.textContent = '📄'; 
-    }
+    } catch(e) { console.error(e); window.showToast("PDF 생성 실패"); }
+    finally { tWrap.textContent = origText; iWrap.textContent = '📄'; }
 };
 
-// 가상 PDF 페이지(A4 사이즈) 생성 헬퍼 함수
-function createPdfPage(boardTitle, pageNum) {
+// A4 세로 핀터레스트 레이아웃 페이지 생성함수
+function createPdfVerticalPage(title, num) {
     const page = document.createElement('div');
-    page.className = 'pdf-page';
-    page.style.width = '1042px'; // 좌우 여백 제외한 실 너비
-    page.style.minHeight = '714px'; // A4 가로 높이
-    page.style.backgroundColor = 'transparent';
-    page.style.pageBreakAfter = 'always';
-    
+    page.className = 'pdf-v-page';
+    page.style.cssText = 'width:720px; min-height:1000px; background:white; margin-bottom:50px; padding:20px;';
     page.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid var(--ink); padding-bottom: 10px; margin-bottom: 24px;">
-            <h2 style="margin: 0; font-size: 1.8rem; font-weight: 900; color: var(--ink);">${boardTitle}</h2>
-            <div style="text-align: right; color: var(--ink-3);">
-                <span style="font-size: 0.9rem; font-weight: bold;">Page ${pageNum}</span><br>
-                <span style="font-size: 0.8rem;">출력일시: ${new Date().toLocaleString('ko-KR')}</span>
-            </div>
+        <div style="border-bottom:3px solid #333; padding-bottom:10px; margin-bottom:30px; display:flex; justify-content:space-between; align-items:center;">
+            <h1 style="margin:0; font-size:24px;">${title}</h1>
+            <span style="font-weight:bold; color:#666;">Page ${num}</span>
         </div>
-        <div class="pdf-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; align-items: start;"></div>
+        <div style="display:flex; gap:20px; align-items:flex-start;">
+            <div class="col-left" style="flex:1; display:flex; flex-direction:column;"></div>
+            <div class="col-right" style="flex:1; display:flex; flex-direction:column;"></div>
+        </div>
     `;
     return page;
 }
@@ -202,12 +177,10 @@ window.currentFileData = null;
 window.handleFileUpload = (event) => {
     const file = event.target.files[0];
     if(!file) return;
-    if(file.size > 2 * 1024 * 1024) { alert("용량 제한: 2MB 이하만 업로드 가능합니다."); return; }
-    
+    if(file.size > 2 * 1024 * 1024) { alert("2MB 이하 파일만 가능합니다."); return; }
     document.getElementById('fileNameDisplay').textContent = file.name;
     const isImage = file.type.startsWith('image/');
     const reader = new FileReader();
-    
     reader.onload = (e) => {
         if(isImage) {
             const img = new Image();
@@ -218,17 +191,14 @@ window.handleFileUpload = (event) => {
                 if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
                 canvas.width = width; canvas.height = height;
                 const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
-                
                 window.currentFileData = { url: canvas.toDataURL('image/jpeg', 0.8), name: file.name, isImage: true };
                 document.getElementById('filePreviewImg').src = window.currentFileData.url;
                 document.getElementById('filePreviewImg').style.display = 'block';
-                document.getElementById('filePreviewFile').style.display = 'none';
                 document.getElementById('filePreviewWrap').style.display = 'block';
             };
             img.src = e.target.result;
         } else {
             window.currentFileData = { url: e.target.result, name: file.name, isImage: false };
-            document.getElementById('filePreviewImg').style.display = 'none';
             document.getElementById('filePreviewFile').textContent = `📁 ${file.name}`;
             document.getElementById('filePreviewFile').style.display = 'block';
             document.getElementById('filePreviewWrap').style.display = 'block';
@@ -236,19 +206,16 @@ window.handleFileUpload = (event) => {
     };
     reader.readAsDataURL(file);
 };
-
 window.removeFile = () => {
     window.currentFileData = null; document.getElementById('fileInput').value = '';
     document.getElementById('fileNameDisplay').textContent = '선택된 파일 없음';
     document.getElementById('filePreviewWrap').style.display = 'none';
 };
-
 window.getYoutubeId = function(url) {
     const regExp = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
     const match = url.match(regExp);
     return (match && match[1]) ? match[1] : null;
 };
-
 
 // ─────────────────────────────────────────────
 // 5. Firebase 연동 및 하이브리드 로그인/마스터 관리 로직
@@ -285,7 +252,6 @@ try {
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
-// 🌟 로그인 및 회원가입 관련
 window.signInWithGoogle = () => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -298,26 +264,21 @@ window.logout = () => {
 
 window.withdrawAccount = async () => {
     if(!currentUserUid) return;
-    if(!confirm("정말 탈퇴하시겠습니까?\n선생님이 생성하신 '모든 보드와 데이터'가 서버에서 영구적으로 파기되며 복구할 수 없습니다.")) return;
-
-    window.showToast("데이터를 파기하는 중...");
+    if(!confirm("정말 탈퇴하시겠습니까?\n모든 데이터가 영구 파기됩니다.")) return;
+    window.showToast("데이터 파기 중...");
     try {
         const snap = await get(ref(db, 'board_meta'));
         const allBoards = snap.val() || {};
         const myBoards = Object.keys(allBoards).filter(k => allBoards[k].ownerUid === currentUserUid);
-        
         for (const boardId of myBoards) {
             const roomCode = allBoards[boardId].roomCode;
             await remove(ref(db, `boards/${boardId}`));
             await remove(ref(db, `board_meta/${boardId}`));
             if(roomCode) await remove(ref(db, `room_codes/${roomCode}`));
         }
-        
-        window.showToast("탈퇴 처리가 완료되었습니다.");
+        window.showToast("탈퇴 완료.");
         setTimeout(() => window.logout(), 1500);
-    } catch(e) {
-        window.showToast("오류가 발생했습니다.");
-    }
+    } catch(e) { window.showToast("오류 발생."); }
 };
 
 window.enterWithCode = async () => {
@@ -327,49 +288,42 @@ window.enterWithCode = async () => {
         const snap = await get(ref(db, `room_codes/${code}`));
         if(snap.exists()) { window.location.hash = `board=${snap.val()}`; window.location.reload(); } 
         else { window.showToast("존재하지 않는 코드입니다."); }
-    } catch (e) { window.showToast("오류가 발생했습니다. 다시 시도해주세요."); }
+    } catch (e) { window.showToast("오류 발생."); }
 };
 
 window.openMasterAdmin = async () => {
     window.openModal('adminModal');
     const listEl = document.getElementById('adminBoardList');
-    listEl.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px;">데이터를 불러오는 중...</td></tr>';
-
+    listEl.innerHTML = '<tr><td colspan="4" style="text-align:center;">데이터 로딩 중...</td></tr>';
     try {
         const snap = await get(ref(db, 'board_meta'));
         const data = snap.val() || {};
         const boards = Object.keys(data).map(k => ({ id: k, ...data[k] })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-
-        if(boards.length === 0) { listEl.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px;">생성된 보드가 없습니다.</td></tr>'; return; }
-
+        if(boards.length === 0) { listEl.innerHTML = '<tr><td colspan="4">보드가 없습니다.</td></tr>'; return; }
         let html = '';
         boards.forEach(b => {
             const title = window.escapeHtml(b.title || '이름 없음');
             const code = b.roomCode || '없음';
             const owner = b.ownerUid ? (b.ownerUid.substring(0, 8) + '...') : '알 수 없음';
-            const isDeleted = b.deletedAt ? '<span style="color:red; font-size:0.8rem;">(휴지통)</span>' : '';
-            
-            html += `
-                <tr>
-                    <td><a href="#board=${b.id}" class="admin-board-link" onclick="window.closeModal('adminModal'); setTimeout(()=>window.location.reload(), 50);"><strong>${title}</strong></a> ${isDeleted}</td>
-                    <td><span style="background:var(--primary-soft); color:var(--primary); padding:4px 8px; border-radius:6px; font-weight:bold;">${code}</span></td>
-                    <td style="color:var(--ink-3); font-family:monospace;">${owner}</td>
-                    <td><button class="btn-admin-del" onclick="window.forceDeleteBoard('${b.id}', '${code}')">강제 삭제</button></td>
-                </tr>
-            `;
+            html += `<tr>
+                <td><a href="#board=${b.id}" class="admin-board-link" onclick="window.closeModal('adminModal'); setTimeout(()=>window.location.reload(), 50);"><strong>${title}</strong></a></td>
+                <td><span>${code}</span></td>
+                <td>${owner}</td>
+                <td><button class="btn-admin-del" onclick="window.forceDeleteBoard('${b.id}', '${code}')">삭제</button></td>
+            </tr>`;
         });
         listEl.innerHTML = html;
-    } catch(e) { listEl.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px; color: red;">데이터를 불러오는 데 실패했습니다.</td></tr>'; }
+    } catch(e) { listEl.innerHTML = '<tr><td colspan="4">로딩 실패</td></tr>'; }
 };
 
 window.forceDeleteBoard = async (boardId, roomCode) => {
-    if(confirm('이 보드를 서버에서 영구적으로 삭제하시겠습니까?\n이 작업은 절대 복구할 수 없습니다.')) {
+    if(confirm('이 보드를 영구 삭제하시겠습니까?')) {
         try {
             await remove(ref(db, `boards/${boardId}`));
             await remove(ref(db, `board_meta/${boardId}`));
             if(roomCode && roomCode !== '없음') await remove(ref(db, `room_codes/${roomCode}`));
-            window.showToast('강제 삭제 완료'); window.openMasterAdmin(); 
-        } catch(e) { window.showToast('삭제 중 오류 발생'); }
+            window.showToast('삭제 완료'); window.openMasterAdmin(); 
+        } catch(e) { window.showToast('오류 발생'); }
     }
 };
 
@@ -378,22 +332,14 @@ onAuthStateChanged(auth, (user) => {
         currentUserUid = user.uid;
         myName = user.displayName || "선생님";
         try { localStorage.setItem('learner_name', myName); } catch(e) {}
-        
         document.getElementById('userDisplayName').textContent = myName;
         document.getElementById('withdrawBtn').style.display = 'block'; 
-        
-        if(user.email === MASTER_ADMIN_EMAIL) {
-            const adminBtn = document.getElementById('adminBtn');
-            if(adminBtn) adminBtn.style.display = 'block';
-        }
-
-        if(currentBoardId) initBoardApp(); 
-        else initLobbyApp(); 
+        if(user.email === MASTER_ADMIN_EMAIL) document.getElementById('adminBtn').style.display = 'block';
+        if(currentBoardId) initBoardApp(); else initLobbyApp(); 
     } else {
         document.getElementById('withdrawBtn').style.display = 'none';
-        if(currentBoardId) {
-            initBoardApp(); 
-        } else {
+        if(currentBoardId) initBoardApp(); 
+        else {
             document.getElementById('loginView').style.display = 'flex';
             document.getElementById('lobbyView').style.display = 'none';
             document.getElementById('appView').style.display = 'none';
@@ -401,7 +347,6 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// ── 로비 앱 ──
 function initLobbyApp() {
     document.getElementById('loginView').style.display = 'none';
     document.getElementById('appView').style.display  = 'none';
@@ -410,128 +355,77 @@ function initLobbyApp() {
     window.openStorageManager = () => {
         document.getElementById('storageText').innerHTML = "용량을 계산해볼까요?";
         document.getElementById('calcBtn').style.display = 'inline-block';
-        document.getElementById('cleanBtn').style.display = 'none';
         window.openModal('storageModal');
     };
 
     window.calculateStorage = async () => {
-        const btn = document.getElementById('calcBtn'); const txt = document.getElementById('storageText');
+        const btn = document.getElementById('calcBtn');
         btn.textContent = "계산 중..."; btn.disabled = true;
-
         try {
-            const snap = await get(ref(db, 'boards')); const boards = snap.val() || {};
-            let totalBytes = 0; let fileCount = 0;
-
-            Object.values(boards).forEach(board => {
-                if(board.posts) {
-                    Object.values(board.posts).forEach(post => {
-                        if(post.fileData && post.fileData.url) { totalBytes += post.fileData.url.length; fileCount++; }
-                    });
-                }
+            const snap = await get(ref(db, 'boards'));
+            const boards = snap.val() || {};
+            let bytes = 0; let count = 0;
+            Object.values(boards).forEach(b => {
+                if(b.posts) Object.values(b.posts).forEach(p => { if(p.fileData) { bytes += p.fileData.url.length; count++; }});
             });
-
-            const mb = (totalBytes / (1024 * 1024)).toFixed(2);
-            txt.innerHTML = `첨부파일 <b style="color:var(--accent)">${fileCount}</b>개<br>추정 사용량: <b style="color:var(--accent)">${mb} MB</b> / 1024 MB`;
+            const mb = (bytes / (1024 * 1024)).toFixed(2);
+            document.getElementById('storageText').innerHTML = `첨부파일: ${count}개 / 사용량: ${mb}MB`;
             btn.style.display = 'none';
-            if(fileCount > 0) document.getElementById('cleanBtn').style.display = 'block';
-        } catch(e) { txt.textContent = "오류가 발생했습니다."; } 
-        finally { btn.disabled = false; btn.textContent = "현재 첨부파일 사용량 계산하기"; }
+            if(count > 0) document.getElementById('cleanBtn').style.display = 'block';
+        } catch(e) { window.showToast("오류 발생"); }
+        finally { btn.disabled = false; btn.textContent = "계산하기"; }
     };
 
     window.cleanUpFiles = async () => {
-        if(!confirm("모든 보드의 첨부파일을 삭제하시겠습니까?\n(텍스트와 댓글은 유지됩니다)")) return;
-        window.showToast("정리 중...");
+        if(!confirm("모든 사진을 삭제하시겠습니까?")) return;
         try {
-            const snap = await get(ref(db, 'boards')); const boards = snap.val() || {}; const updates = {};
-            Object.keys(boards).forEach(boardId => {
-                if(boards[boardId].posts) {
-                    Object.keys(boards[boardId].posts).forEach(postId => {
-                        if(boards[boardId].posts[postId].fileData) updates[`boards/${boardId}/posts/${postId}/fileData`] = null; 
-                    });
-                }
+            const snap = await get(ref(db, 'boards'));
+            const boards = snap.val() || {};
+            const updates = {};
+            Object.keys(boards).forEach(bid => {
+                if(boards[bid].posts) Object.keys(boards[bid].posts).forEach(pid => { if(boards[bid].posts[pid].fileData) updates[`boards/${bid}/posts/${pid}/fileData`] = null; });
             });
-            if(Object.keys(updates).length > 0) { await update(ref(db), updates); window.showToast("정리 완료!"); window.closeModal('storageModal'); } 
-            else { window.showToast("삭제할 첨부파일이 없습니다."); }
+            await update(ref(db), updates); window.showToast("정리 완료!"); window.closeModal('storageModal');
         } catch(e) { window.showToast("오류 발생"); }
-    };
-
-    window.deleteBoard = (boardId, e) => {
-        e.stopPropagation();
-        if (confirm('이 보드를 휴지통으로 이동할까요? (15일 후 영구 삭제)')) {
-            update(ref(db, `board_meta/${boardId}`), { deletedAt: Date.now() }); window.showToast('휴지통으로 이동됨');
-        }
-    };
-
-    window.restoreBoard = (boardId, e) => {
-        e.stopPropagation();
-        update(ref(db, `board_meta/${boardId}`), { deletedAt: null }); window.showToast('복구됨');
-    };
-
-    window.hardDeleteBoard = (boardId, e) => {
-        e.stopPropagation();
-        if (confirm('영구 삭제하시겠습니까?')) {
-            remove(ref(db, `boards/${boardId}`)); remove(ref(db, `board_meta/${boardId}`)); window.showToast('영구 삭제됨');
-        }
     };
 
     onValue(ref(db, 'board_meta'), snap => {
         const data  = snap.val() || {}; 
         const grid  = document.getElementById('boardGrid');
         const trashGrid = document.getElementById('trashGrid');
-        const trashSection = document.getElementById('trashSection');
-        
         grid.innerHTML = ''; trashGrid.innerHTML = '';
-        let hasTrash = false; const now = Date.now();
-        
-        const myBoards = Object.keys(data)
-            .map(k => ({ id: k, ...data[k] }))
-            .filter(b => b.ownerUid === currentUserUid)
-            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-
+        let hasTrash = false;
+        const myBoards = Object.keys(data).map(k => ({ id: k, ...data[k] })).filter(b => b.ownerUid === currentUserUid).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
         myBoards.forEach(b => {
           if (b.deletedAt) {
-              if (now - b.deletedAt > 15 * 24 * 60 * 60 * 1000) {
-                  remove(ref(db, `boards/${b.id}`)); remove(ref(db, `board_meta/${b.id}`)); return; 
-              }
+              if (Date.now() - b.deletedAt > 15*86400000) { remove(ref(db, `boards/${b.id}`)); remove(ref(db, `board_meta/${b.id}`)); return; }
               hasTrash = true;
               const card = document.createElement('div'); card.className = 'board-card trash-card';
-              card.innerHTML = `
-                <div style="padding: 16px;"><h3 class="board-name">🗑️ ${window.escapeHtml(b.title || b.id)}</h3><p class="board-date">삭제일: ${new Date(b.deletedAt).toLocaleDateString()}</p></div>
-                <div class="trash-actions"><button class="btn-restore" onclick="window.restoreBoard('${b.id}', event)">복구</button><button class="btn-hard-del" onclick="window.hardDeleteBoard('${b.id}', event)">영구삭제</button></div>
-              `;
+              card.innerHTML = `<div style="padding:16px;"><h3>🗑️ ${window.escapeHtml(b.title)}</h3></div><div class="trash-actions"><button class="btn-restore" onclick="window.restoreBoard('${b.id}', event)">복구</button></div>`;
               trashGrid.appendChild(card);
           } else {
               const card = document.createElement('div'); card.className = 'board-card';
-              const thumb = b.thumb ? `<img src="${b.thumb}" class="board-thumb" alt="">` : `<div class="board-thumb-empty">📝</div>`;
-              const date = b.updatedAt ? new Date(b.updatedAt).toLocaleString('ko-KR', { dateStyle:'short', timeStyle:'short' }) : '–';
-              card.innerHTML = `
-                ${thumb}
-                <button class="board-delete-btn" title="휴지통으로 이동" onclick="window.deleteBoard('${b.id}', event)">🗑️</button>
-                <div class="board-info"><h3 class="board-name">${window.escapeHtml(b.title || b.id)}</h3><p class="board-date">최근 활동: ${date}</p></div>
-              `;
+              const thumb = b.thumb ? `<img src="${b.thumb}" class="board-thumb">` : `<div class="board-thumb-empty">📝</div>`;
+              card.innerHTML = `${thumb}<button class="board-delete-btn" onclick="window.deleteBoard('${b.id}', event)">🗑️</button><div class="board-info"><h3>${window.escapeHtml(b.title)}</h3></div>`;
               card.onclick = () => { window.location.hash = `board=${b.id}`; window.location.reload(); };
               grid.appendChild(card);
           }
         });
-        trashSection.style.display = hasTrash ? 'block' : 'none';
+        document.getElementById('trashSection').style.display = hasTrash ? 'block' : 'none';
     });
 
     window.createBoardFromLobby = () => {
         const name = prompt('새 보드 이름:');
         if (name?.trim()) { 
-            const newBoardId = push(ref(db, 'boards')).key; 
-            const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase(); 
-            
-            set(ref(db, `board_meta/${newBoardId}`), {
-                title: name.trim(), ownerUid: currentUserUid, roomCode: roomCode, updatedAt: Date.now()
-            });
-            set(ref(db, `room_codes/${roomCode}`), newBoardId);
-            window.location.hash = `board=${newBoardId}`; window.location.reload(); 
+            const bid = push(ref(db, 'boards')).key; 
+            const code = Math.random().toString(36).substring(2, 8).toUpperCase(); 
+            set(ref(db, `board_meta/${bid}`), { title: name.trim(), ownerUid: currentUserUid, roomCode: code, updatedAt: Date.now() });
+            set(ref(db, `room_codes/${code}`), bid);
+            window.location.hash = `board=${bid}`; window.location.reload(); 
         }
     };
 }
 
-// ── 보드 앱 ──
 function initBoardApp() {
   document.getElementById('loginView').style.display = 'none';
   document.getElementById('lobbyView').style.display = 'none';
@@ -539,647 +433,89 @@ function initBoardApp() {
 
   const boardRef    = ref(db, `boards/${currentBoardId}/posts`);
   const settingsRef = ref(db, `boards/${currentBoardId}/settings`);
-  const columnsRef  = ref(db, `boards/${currentBoardId}/columns`);
   const metaRef     = ref(db, `board_meta/${currentBoardId}`);
 
-  let isAnonMode     = false;
   let reactionType   = 'like'; 
   let currentColId   = null;   
   let currentEditId  = null;
-
   let allPostsData   = {};
-  let localColumnsData = {};
   let localPosts     = {};     
-  let localColEls    = {};     
-
-  window.applyMasonry = () => {
-      if (window.currentLayout !== 'wall') return;
-      const board = document.getElementById('board');
-      const posts = Array.from(board.querySelectorAll('.post-it'));
-      if (posts.length === 0) return;
-
-      const colWidth = 280; const gap = 24; const hPadding = 32;
-      let cols = Math.floor((board.clientWidth - (hPadding * 2) + gap) / (colWidth + gap));
-      if (cols < 1) cols = 1;
-      const totalWidth = cols * colWidth + (cols - 1) * gap;
-      const offsetX = (board.clientWidth - totalWidth) / 2;
-      const colHeights = Array(cols).fill(130); 
-
-      posts.forEach(post => {
-          const minCol = colHeights.indexOf(Math.min(...colHeights));
-          post.style.left = `${offsetX + minCol * (colWidth + gap)}px`;
-          post.style.top = `${colHeights[minCol]}px`;
-          colHeights[minCol] += post.offsetHeight + gap;
-      });
-
-      let spacer = document.getElementById('masonry-spacer');
-      if (!spacer) {
-          spacer = document.createElement('div'); spacer.id = 'masonry-spacer';
-          spacer.style.position = 'absolute'; spacer.style.width = '1px'; spacer.style.visibility = 'hidden';
-          board.appendChild(spacer);
-      }
-      spacer.style.top = `${Math.max(...colHeights) + 80}px`; 
-  };
 
   window.updateCanvasSize = () => {
-      if (window.currentLayout !== 'canvas') {
-          const spacer = document.getElementById('canvas-spacer'); if (spacer) spacer.style.display = 'none'; return;
-      }
+      if (window.currentLayout !== 'canvas') return;
       let maxX = window.innerWidth; let maxY = window.innerHeight;
-      Object.keys(allPostsData).forEach(id => {
-          const p = allPostsData[id];
-          if (p.x && p.x + 350 > maxX) maxX = p.x + 350;
-          if (p.y && p.y + 350 > maxY) maxY = p.y + 350;
-      });
-      if (dragState.el) {
-          const dragX = parseFloat(dragState.el.style.left) || 0; const dragY = parseFloat(dragState.el.style.top) || 0;
-          if (dragX + 350 > maxX) maxX = dragX + 350; if (dragY + 350 > maxY) maxY = dragY + 350;
-      }
-      const board = document.getElementById('board');
-      let spacer = document.getElementById('canvas-spacer');
-      if (!spacer) {
-          spacer = document.createElement('div'); spacer.id = 'canvas-spacer';
-          spacer.style.position = 'absolute'; spacer.style.width = '1px'; spacer.style.height = '1px'; spacer.style.visibility = 'hidden';
-          board.appendChild(spacer);
-      }
-      spacer.style.display = 'block'; spacer.style.left = maxX + 'px'; spacer.style.top = maxY + 'px';
+      Object.values(allPostsData).forEach(p => { if (p.x+350 > maxX) maxX = p.x+350; if (p.y+350 > maxY) maxY = p.y+350; });
+      const b = document.getElementById('board');
+      let s = document.getElementById('canvas-spacer');
+      if (!s) { s = document.createElement('div'); s.id = 'canvas-spacer'; s.style.cssText = 'position:absolute;width:1px;height:1px;visibility:hidden;'; b.appendChild(s); }
+      s.style.left = maxX + 'px'; s.style.top = maxY + 'px';
   };
-
-  window.addEventListener('resize', () => {
-      if (window.currentLayout === 'wall') window.applyMasonry();
-      else if (window.currentLayout === 'canvas') window.updateCanvasSize();
-  });
-
-  function ensureName () {
-    if (myName) return; 
-    window.openModal('nameModal'); 
-    setTimeout(() => document.getElementById('nameInput').focus(), 100);
-  }
-  window.confirmName = () => {
-    const v = document.getElementById('nameInput').value.trim();
-    if (!v) return; myName = v; 
-    try { localStorage.setItem('learner_name', myName); } catch(e) {}
-    window.closeModal('nameModal');
-  };
-  ensureName();
-
-  update(metaRef, { updatedAt: Date.now(), deletedAt: null });
 
   onValue(settingsRef, snap => {
     const s = snap.val() || {};
-    const bTitle = s.title || `🤝 ${currentBoardId} 보드`;
-    const bDesc = s.description || `설명이 없습니다.`;
-    document.getElementById('boardTitleText').textContent = bTitle;
-    
-    onValue(metaRef, metaSnap => {
-        const meta = metaSnap.val() || {};
-        if (meta.roomCode) {
-            const el = document.getElementById('displayRoomCode');
-            if(el) el.textContent = meta.roomCode;
-        }
-    }, {onlyOnce: true});
-
-    if(document.activeElement.id !== 'sbTitleInput') document.getElementById('sbTitleInput').value = bTitle;
-    if(document.activeElement.id !== 'sbDescInput') document.getElementById('sbDescInput').value = bDesc;
-    
-    update(metaRef, { title: bTitle });
-
-    document.body.classList.toggle('hide-comments', s.commentsEnabled === false);
-    document.body.classList.toggle('hide-reactions', s.reactionType === 'none');
-    document.body.classList.toggle('post-order-top', s.postOrder === 'top');
-
-    document.getElementById('anonToggle').checked = s.isAnonymous || false;
-    document.getElementById('commentToggle').checked = s.commentsEnabled !== false;
-    
-    reactionType = s.reactionType || 'like';
-    document.getElementById('reactionSelect').value = reactionType;
-    document.getElementById('postOrderSelect').value = s.postOrder || 'bottom';
-    
-    const font = s.font || "'Pretendard', sans-serif";
-    document.body.style.fontFamily = font;
-    document.getElementById('fontSelect').value = font;
-
-    isAnonMode = s.isAnonymous || false;
-    refreshAllAuthors();
-
-    const bg = s.bgColor || '#f9fafb';
-    document.body.style.backgroundColor = bg;
-    document.getElementById('bgSelect').value = bg;
-    if(bg === '#111827') { document.body.style.color = 'white'; document.querySelector('.board-title-text').style.color='white'; document.querySelector('.board-desc-text').style.color='#9ca3af';} 
-    else { document.body.style.color = ''; document.querySelector('.board-title-text').style.color=''; document.querySelector('.board-desc-text').style.color='';}
-
-    const newLayout = s.layout || 'canvas';
-    const layoutChanged = window.currentLayout !== newLayout;
-    window.currentLayout = newLayout; 
-    
+    document.getElementById('boardTitleText').textContent = s.title || "아이디어 보드";
+    onValue(metaRef, ms => { if(ms.val()?.roomCode) document.getElementById('displayRoomCode').textContent = ms.val().roomCode; }, {onlyOnce: true});
+    window.currentLayout = s.layout || 'canvas';
     document.getElementById('board').setAttribute('data-layout', window.currentLayout);
-    document.getElementById('layoutSelect').value = window.currentLayout;
-
-    document.querySelectorAll('.post-it').forEach(el => { el.draggable = (window.currentLayout !== 'canvas'); });
-    updateAllReactionsIcon();
-
-    if(layoutChanged) { renderColumns(); renderPostsOrder(); window.updateCanvasSize(); }
-  });
-
-  onValue(columnsRef, snap => {
-    localColumnsData = snap.val() || {}; renderColumns(); renderPostsOrder();
+    if(window.currentLayout === 'canvas') window.updateCanvasSize();
   });
 
   onValue(boardRef, snap => {
     allPostsData = snap.val() || {};
     Object.keys(localPosts).forEach(id => { if (!allPostsData[id]) { localPosts[id].remove(); delete localPosts[id]; } });
-
     Object.keys(allPostsData).forEach(id => {
       const p = allPostsData[id]; let el = localPosts[id];
-      if (!el) { el = createPostEl(id, p); localPosts[id] = el; placePost(el, p.columnId); }
-      updatePostEl(el, id, p);
+      if (!el) { el = createPostEl(id, p); localPosts[id] = el; document.getElementById('board').appendChild(el); }
+      el.style.backgroundColor = p.color || '#fff';
+      el.style.left = (p.x || 80) + 'px'; el.style.top = (p.y || 80) + 'px';
+      let html = '';
+      if(p.fileData) html += `<img src="${p.fileData.url}" style="width:100%; border-radius:8px; margin-bottom:10px;">`;
+      html += `<div style="word-break:break-all;">${window.escapeHtml(p.content)}</div><div style="font-size:0.8rem; margin-top:10px; color:#888;">by ${window.escapeHtml(p.author)}</div>`;
+      el.querySelector('.post-body-content').innerHTML = html;
     });
-    
-    renderPostsOrder();
     if(window.currentLayout === 'canvas') window.updateCanvasSize();
   });
 
-  function getReactionIcon(type) { return type === 'thumb' ? '👍' : type === 'star' ? '⭐' : '❤️'; }
-
-  function updateAllReactionsIcon() {
-      Object.keys(localPosts).forEach(id => {
-          const iconEl = localPosts[id].querySelector('.like-icon'); if(iconEl) iconEl.textContent = getReactionIcon(reactionType);
-          const btn = localPosts[id].querySelector('.like-btn'); if(btn) btn.setAttribute('data-type', reactionType);
-      });
-  }
-
   function createPostEl (id, p) {
-    const el = document.createElement('div'); el.className = 'post-it'; el.id = id;
-    const isAnon = document.getElementById('anonToggle').checked;
-    el.innerHTML = `
-      <div class="post-top">
-        <div class="post-author-row">
-          <div class="author-avatar">${window.getInitials(p.author)}</div>
-          <span class="post-author" data-real="${p.author}">${isAnon ? '익명' : p.author}</span>
-        </div>
-        <div class="post-btns">
-          <button class="post-btn edit" title="수정">✏️</button>
-          <button class="post-btn del"  title="삭제">✕</button>
-        </div>
-      </div>
-      <div class="post-body-content"></div>
-      <div class="post-foot">
-        <button class="like-btn" data-id="${id}" data-type="${reactionType}">
-            <span class="like-icon">${getReactionIcon(reactionType)}</span>
-            <span class="like-count">0</span>
-        </button>
-      </div>
-      <div class="comments-wrap">
-        <div class="comment-list"></div>
-        <input class="comment-input" type="text" placeholder="댓글 달기…">
-      </div>`;
-
-    el.querySelector('.del').onclick  = e => { e.stopPropagation(); window.deletePost(id); };
-    el.querySelector('.edit').onclick = e => { e.stopPropagation(); window.editPost(id); };
-    el.querySelector('.like-btn').onclick = e => { e.stopPropagation(); window.toggleLike(id); };
-    
-    el.querySelector('.comment-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-          e.preventDefault();
-          if (e.isComposing || e.keyCode === 229) return; 
-          const text = e.target.value.trim();
-          if (text) { e.target.value = ''; window.addComment(id, text, e.target); }
-      }
-    });
-    
-    if(typeof MobileDragDrop !== 'undefined') {
-        el.addEventListener('touchstart', function(e) {}, {passive: true});
-    }
-
-    el.draggable = (window.currentLayout !== 'canvas');
-    el.addEventListener('dragstart', (e) => handleDragStart(e, id));
-    el.addEventListener('dragend', handleDragEnd);
-    el.addEventListener('dragover', (e) => e.preventDefault());
-    el.addEventListener('drop', (e) => handleDropOnWall(e, id)); 
-    
-    el.addEventListener('pointerdown', e => {
-        if(window.currentLayout === 'canvas') startFreeDrag(e, id, el);
-    });
+    const el = document.createElement('div');
+    el.className = 'post-it'; el.id = id;
+    el.innerHTML = `<div class="post-top" style="display:flex; justify-content:flex-end; padding:5px;"><button class="del">✕</button></div><div class="post-body-content" style="padding:10px;"></div>`;
+    el.querySelector('.del').onclick = () => remove(ref(db, `boards/${currentBoardId}/posts/${id}`));
+    el.addEventListener('pointerdown', e => startFreeDrag(e, id, el));
     return el;
   }
 
-  function updatePostEl (el, id, p) {
-    el.style.backgroundColor = p.color || '#ffffff';
-    let html = '';
-    if(p.fileData) {
-        if(p.fileData.isImage) html += `<img src="${p.fileData.url}" class="post-img" alt="첨부이미지" onload="if(window.applyMasonry) window.applyMasonry(); window.updateCanvasSize();" onclick="window.openImageViewer('${p.fileData.url}')">`;
-        else html += `<a href="${p.fileData.url}" download="${p.fileData.name}" class="post-file">📁 ${p.fileData.name}</a>`;
-    }
-    
-    if(p.linkUrl) {
-        const ytId = window.getYoutubeId(p.linkUrl);
-        if(ytId) {
-            html += `<div class="yt-thumb-wrap" onclick="window.open('${p.linkUrl}', '_blank')"><img src="https://img.youtube.com/vi/${ytId}/hqdefault.jpg" class="yt-thumb"><div class="yt-play-icon">▶</div></div>`;
-        } else {
-            html += `<a href="${p.linkUrl}" target="_blank" rel="noopener" class="post-link">🔗 참고 링크</a>`;
-        }
-    }
-
-    html += `<div class="post-text">${window.escapeHtml(p.content || '')}</div>`;
-    el.querySelector('.post-body-content').innerHTML = html;
-
-    const liked = !!(likedPosts[id]);
-    const likeBtn = el.querySelector('.like-btn');
-    likeBtn.classList.toggle('liked', liked);
-    el.querySelector('.like-count').textContent = p.likes || 0;
-
-    const list = el.querySelector('.comment-list');
-    let cHtml = '';
-    if (p.comments) {
-      const isAnon = document.getElementById('anonToggle').checked;
-      Object.values(p.comments).sort((a,b) => a.timestamp - b.timestamp).forEach(c => {
-        const name = isAnon ? '익명' : window.escapeHtml(c.author || '?');
-        cHtml += `<div class="comment-item"><span class="c-author">${name}</span><span class="c-text">${window.escapeHtml(c.text)}</span></div>`;
-      });
-    }
-    list.innerHTML = cHtml; list.scrollTop = list.scrollHeight;
-
-    if (window.currentLayout === 'canvas' && (!dragState.id || dragState.id !== id)) {
-      el.style.left = (p.x || 80) + 'px'; el.style.top  = (p.y || 80) + 'px';
-    }
-  }
-
-  function renderColumns () {
-    const board  = document.getElementById('board');
-    if (window.currentLayout !== 'column') {
-      Object.values(localColEls).forEach(el => el.remove());
-      localColEls = {}; document.getElementById('addColBtnWrap')?.remove(); return;
-    }
-
-    let addWrap = document.getElementById('addColBtnWrap');
-    if (!addWrap) {
-      addWrap = document.createElement('div'); addWrap.id = 'addColBtnWrap'; addWrap.className = 'add-column-btn-wrap';
-      addWrap.innerHTML = `<button class="add-col-btn" onclick="window.addColumn()">＋ 섹션 추가</button>`;
-      board.appendChild(addWrap);
-    }
-
-    Object.entries(localColumnsData).sort((a,b)=>a[1].order - b[1].order).forEach(([cid, data]) => {
-      if (localColEls[cid]) {
-        const inp = localColEls[cid].querySelector('.column-title-input');
-        if (document.activeElement !== inp) inp.value = data.title || '';
-        return;
-      }
-      const wrap = document.createElement('div');
-      wrap.className = 'column-wrap'; wrap.id = `col-${cid}`;
-      
-      wrap.innerHTML = `
-        <div class="column-head">
-          <input class="column-title-input" value="${window.escapeHtml(data.title||'')}" placeholder="섹션 이름" onchange="window.renameColumn('${cid}', this.value)">
-          <button class="column-del-btn" onclick="window.deleteColumn('${cid}')" title="섹션 삭제">✕</button>
-        </div>
-        <button class="column-add-post" onclick="window.openWriteModal('${cid}')">＋ 포스트잇 추가</button>
-        <div class="column-body" id="colbody-${cid}"></div>`;
-      
-      wrap.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
-      wrap.addEventListener('drop', e => {
-          e.preventDefault();
-          const postId = e.dataTransfer.getData('text/plain');
-          if(postId && allPostsData[postId] && allPostsData[postId].columnId !== cid) {
-              update(ref(db, `boards/${currentBoardId}/posts/${postId}`), { columnId: cid });
-          }
-          document.querySelectorAll('.post-it').forEach(el => el.classList.remove('is-dragging-node'));
-      });
-      
-      board.insertBefore(wrap, addWrap); localColEls[cid] = wrap;
-    });
-
-    Object.keys(localColEls).forEach(cid => { if (!localColumnsData[cid]) { localColEls[cid].remove(); delete localColEls[cid]; } });
-  }
-
-  function renderPostsOrder () {
-    if(window.currentLayout === 'canvas') {
-        Object.keys(localPosts).forEach(id => {
-            const p = allPostsData[id];
-            const el = localPosts[id];
-            if (el.parentElement !== document.getElementById('board')) document.getElementById('board').appendChild(el);
-            el.style.position = 'absolute'; el.style.left = (p.x || 80) + 'px'; el.style.top = (p.y || 80) + 'px'; el.style.transform = '';
-        });
-        return;
-    }
-
-    const order = document.getElementById('postOrderSelect').value;
-    const board = document.getElementById('board');
-    
-    if (window.currentLayout === 'wall') {
-        const posts = Array.from(board.querySelectorAll('.post-it'));
-        posts.sort((a,b) => {
-            const ta = allPostsData[a.id]?.createdAt || 0; 
-            const tb = allPostsData[b.id]?.createdAt || 0;
-            return order === 'top' ? tb - ta : ta - tb;
-        });
-        posts.forEach(p => { if(!dragState.id || dragState.id !== p.id) board.appendChild(p); }); 
-        setTimeout(window.applyMasonry, 50); 
-        return; 
-    }
-
-    const parentContainers = Object.values(localColEls).map(c => c.querySelector('.column-body'));
-    
-    Object.keys(localPosts).forEach(id => {
-        const p = allPostsData[id]; if(!p) return;
-        const el = localPosts[id];
-        const firstCid = Object.keys(localColumnsData)[0];
-        const bodyId   = `colbody-${p.columnId || firstCid}`;
-        const target = document.getElementById(bodyId) || board;
-        if (el.parentElement !== target && (!dragState.id || dragState.id !== id)) target.appendChild(el);
-    });
-
-    parentContainers.forEach(container => {
-        if(!container) return;
-        const posts = Array.from(container.querySelectorAll('.post-it'));
-        posts.sort((a,b) => {
-            const ta = allPostsData[a.id]?.createdAt || 0; 
-            const tb = allPostsData[b.id]?.createdAt || 0;
-            return order === 'top' ? tb - ta : ta - tb;
-        });
-        posts.forEach(p => { if(!dragState.id || dragState.id !== p.id) container.appendChild(p); }); 
-    });
-  }
-
-  function placePost (el, colId) {
-    let target = document.getElementById('board');
-    if (window.currentLayout === 'column') {
-      const firstCid = Object.keys(localColumnsData)[0];
-      const bodyId   = `colbody-${colId || firstCid}`;
-      target = document.getElementById(bodyId) || target;
-    }
-    if (el.parentElement !== target) target.appendChild(el);
-  }
-
-  function reassignAllPosts () { Object.keys(localPosts).forEach(id => { if (allPostsData[id]) placePost(localPosts[id], allPostsData[id].columnId); }); }
-
-  function refreshAllAuthors () {
-    Object.keys(localPosts).forEach(id => {
-      const el = localPosts[id]; const sp = el.querySelector('.post-author'); const av = el.querySelector('.author-avatar');
-      if (!sp) return; const real = sp.dataset.real || '?';
-      sp.textContent = isAnonMode ? '익명' : real; av.textContent = isAnonMode ? '?' : window.getInitials(real);
-    });
-  }
-
-  window.updateSettings = () => {
-      update(settingsRef, {
-          title: document.getElementById('sbTitleInput').value,
-          description: document.getElementById('sbDescInput').value,
-          isAnonymous: document.getElementById('anonToggle').checked,
-          commentsEnabled: document.getElementById('commentToggle').checked,
-          layout: document.getElementById('layoutSelect').value,
-          postOrder: document.getElementById('postOrderSelect').value,
-          reactionType: document.getElementById('reactionSelect').value,
-          bgColor: document.getElementById('bgSelect').value,
-          font: document.getElementById('fontSelect').value
-      });
-  }
-
-  /* ── CRUD ── */
-  window.openWriteModal = (colId = null) => {
-    if (!myName) { window.openModal('nameModal'); return; }
-    currentColId  = colId; currentEditId = null; window.removeFile();
-    document.getElementById('postInput').value    = '';
-    document.getElementById('linkUrlInput').value = '';
-    document.getElementById('writeModalTitle').textContent = '어떤 아이디어를 나눌까요?';
-    document.querySelectorAll('.color-opt').forEach((d,i) => d.classList.toggle('active', i===0)); 
-    window.openModal('writeModal');
-    setTimeout(() => document.getElementById('postInput').focus(), 80);
-  };
-
-  window.editPost = id => {
-    currentEditId = id; const p = allPostsData[id]; if (!p) return; window.removeFile();
-    document.getElementById('postInput').value    = p.content || '';
-    if(p.fileData) {
-        window.currentFileData = p.fileData;
-        if(p.fileData.isImage) {
-            document.getElementById('filePreviewImg').src = p.fileData.url;
-            document.getElementById('filePreviewImg').style.display = 'block';
-            document.getElementById('filePreviewFile').style.display = 'none';
-        } else {
-            document.getElementById('filePreviewImg').style.display = 'none';
-            document.getElementById('filePreviewFile').textContent = `📁 ${p.fileData.name}`;
-            document.getElementById('filePreviewFile').style.display = 'block';
-        }
-        document.getElementById('filePreviewWrap').style.display = 'block';
-    }
-    document.getElementById('linkUrlInput').value = p.linkUrl  || '';
-    document.getElementById('writeModalTitle').textContent = '게시물 수정';
-    document.querySelectorAll('.color-opt').forEach(d => { d.classList.toggle('active', d.dataset.color === p.color); });
-    window.openModal('writeModal');
-  };
-
-  window.submitPost = () => {
-    if (!myName) { window.closeModal('writeModal'); window.openModal('nameModal'); return; }
-    const content  = document.getElementById('postInput').value.trim();
-    const linkUrl  = document.getElementById('linkUrlInput').value.trim();
-    const fileData = window.currentFileData;
-    if (!content && !fileData && !linkUrl) { window.showToast('내용, 첨부파일 또는 링크를 입력해 주세요.'); return; }
-
-    const color = document.querySelector('.color-opt.active')?.dataset.color || '#ffffff';
-
-    if (currentEditId) {
-      update(ref(db, `boards/${currentBoardId}/posts/${currentEditId}`), { content, fileData: fileData, linkUrl, color });
-    } else {
-      const rand = (v, r) => v + (Math.random() * r * 2 - r);
-      push(boardRef, {
-        content, fileData: fileData, linkUrl, color,
-        author:    myName,
-        x:         rand(window.innerWidth  / 2 - 137, 40),
-        y:         rand(window.innerHeight / 2 - 80,  40),
-        likes:     0,
-        columnId:  currentColId || null,
-        createdAt: Date.now()
-      });
-    }
-    update(metaRef, { updatedAt: Date.now() });
-    window.closeModal('writeModal');
-  };
-
-  window.deletePost = id => { if (confirm('이 포스트잇을 삭제할까요?')) remove(ref(db, `boards/${currentBoardId}/posts/${id}`)); };
-  
-  window.toggleLike = id => {
-    if (likedPosts[id]) { window.showToast('이미 반응을 남겼어요!'); return; }
-    const el = localPosts[id];
-    if(el) {
-        const btn = el.querySelector('.like-btn');
-        const countSpan = el.querySelector('.like-count');
-        const currentCount = parseInt(countSpan.textContent) || 0;
-        btn.classList.add('liked');
-        countSpan.textContent = currentCount + 1;
-        const icon = btn.querySelector('.like-icon');
-        icon.style.transform = 'scale(1.6)'; 
-        setTimeout(() => icon.style.transform = '', 200);
-    }
-    const cur = allPostsData[id]?.likes || 0;
-    update(ref(db, `boards/${currentBoardId}/posts/${id}`), { likes: cur + 1 });
-    likedPosts[id] = true; 
-    try { localStorage.setItem('liked_posts', JSON.stringify(likedPosts)); } catch(e){}
-  };
-  
-  window.addComment = (id, text, inputEl) => { push(ref(db, `boards/${currentBoardId}/posts/${id}/comments`), { author: myName, text, timestamp: Date.now() }); };
-
-  window.addColumn = () => { const t = prompt('새 섹션 이름:'); if (t?.trim()) push(columnsRef, { title: t.trim(), order: Date.now() }); };
-  window.renameColumn = (cid, v) => update(ref(db, `boards/${currentBoardId}/columns/${cid}`), { title: v });
-  window.deleteColumn = cid => { if (confirm('이 섹션을 삭제할까요? (안에 있는 게시물은 지워지지 않습니다)')) remove(ref(db, `boards/${currentBoardId}/columns/${cid}`)); };
-  window.clearBoard = () => { if (confirm('모든 게시물을 삭제합니다. 계속할까요?')) { remove(boardRef); window.closeSidebar(); window.showToast('삭제 완료'); } };
-  
-  window.exitToLobby = async () => {
-    const btn = document.querySelector('.nav-back'); btn.textContent = '⏳';
-    try {
-      if (window.location.protocol !== 'file:') {
-          const canvasPromise = html2canvas(document.getElementById('board'), { scale: 0.3, useCORS: true, backgroundColor: document.body.style.backgroundColor || '#f9fafb' });
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500));
-          const canvas = await Promise.race([canvasPromise, timeoutPromise]);
-          await update(metaRef, { thumb: canvas.toDataURL('image/jpeg', 0.5), updatedAt: Date.now() });
-      } else {
-          await update(metaRef, { updatedAt: Date.now() }); 
-      }
-    } catch(e) { console.warn("썸네일 캡처 우회:", e); }
-    window.location.href = window.location.href.split('?')[0].split('#')[0];
-  };
-
   const dragState = { id: null, offsetX: 0, offsetY: 0, el: null, pointerId: null };
-  let autoScrollRAF = null;
-  const ptrPos = { x: 0, y: 0 }; 
-
-  function updateDragElementPosition() {
-      if (!dragState.el) return;
-      const boardEl = document.getElementById('board');
-      const boardRect = boardEl.getBoundingClientRect(); 
-      
-      const x = ptrPos.x - dragState.offsetX - boardRect.left + boardEl.scrollLeft;
-      const y = ptrPos.y - dragState.offsetY - boardRect.top + boardEl.scrollTop;
-      
-      dragState.el.style.left = x + 'px';
-      dragState.el.style.top  = y + 'px';
-      window.updateCanvasSize(); 
-  }
-
-  function autoScrollLoop() {
-      if (!dragState.id) return;
-      
-      const EDGE = 100; 
-      const SPEED = 15; 
-      let isScrolling = false;
-
-      const boardEl = document.getElementById('board');
-      const boardRect = boardEl.getBoundingClientRect();
-
-      if (ptrPos.x > boardRect.right - EDGE) { boardEl.scrollLeft += SPEED; isScrolling = true; }
-      else if (ptrPos.x < boardRect.left + EDGE) { boardEl.scrollLeft -= SPEED; isScrolling = true; }
-
-      if (ptrPos.y > boardRect.bottom - EDGE) { boardEl.scrollTop += SPEED; isScrolling = true; }
-      else if (ptrPos.y < boardRect.top + EDGE) { boardEl.scrollTop -= SPEED; isScrolling = true; }
-
-      if (isScrolling) {
-          updateDragElementPosition();
-      }
-      
-      autoScrollRAF = requestAnimationFrame(autoScrollLoop);
-  }
-
+  const ptrPos = { x: 0, y: 0 };
   function startFreeDrag (e, id, el) {
-    if (window.currentLayout !== 'canvas') return; 
-    if (e.target.closest('.delete-btn,.edit-btn,.like-btn,.comment-input,.post-link,.post-img,.post-file,.yt-thumb-wrap')) return;
-
-    dragState.id = id; 
-    dragState.el = el;
-    dragState.pointerId = e.pointerId; 
-
-    const rect = el.getBoundingClientRect();
-    dragState.offsetX = e.clientX - rect.left;
-    dragState.offsetY = e.clientY - rect.top;
-
-    ptrPos.x = e.clientX;
-    ptrPos.y = e.clientY;
-
-    el.style.zIndex = '9999';
-    el.classList.add('dragging');
-    document.body.classList.add('is-dragging');
-
-    try { el.setPointerCapture(dragState.pointerId); } catch(e){}
-
-    document.addEventListener('pointermove', onMove, { passive: false });
-    document.addEventListener('pointerup', onUp, { once: true });
-    document.addEventListener('pointercancel', onUp, { once: true });
-
-    autoScrollRAF = requestAnimationFrame(autoScrollLoop);
+    if (window.currentLayout !== 'canvas' || e.target.closest('button')) return;
+    dragState.id = id; dragState.el = el; dragState.pointerId = e.pointerId;
+    const r = el.getBoundingClientRect();
+    dragState.offsetX = e.clientX - r.left; dragState.offsetY = e.clientY - r.top;
+    el.setPointerCapture(e.pointerId);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp, {once:true});
   }
-  
   function onMove (e) {
-    if (!dragState.id) return; e.preventDefault();
-    ptrPos.x = e.clientX;
-    ptrPos.y = e.clientY;
-    updateDragElementPosition();
+    if (!dragState.id) return;
+    const x = e.clientX - dragState.offsetX + document.getElementById('board').scrollLeft;
+    const y = e.clientY - dragState.offsetY + document.getElementById('board').scrollTop;
+    dragState.el.style.left = x + 'px'; dragState.el.style.top = y + 'px';
+    window.updateCanvasSize();
   }
-  
   function onUp (e) {
     if (!dragState.id) return;
-    const el = dragState.el;
-    
-    cancelAnimationFrame(autoScrollRAF);
-
-    const finalX = parseFloat(el.style.left) || 80;
-    const finalY = parseFloat(el.style.top) || 80;
-    update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x: finalX, y: finalY });
-
-    try { el.releasePointerCapture(e.pointerId); } catch(e){}
-    
-    el.classList.remove('dragging');
-    el.style.zIndex = '';
-    document.body.classList.remove('is-dragging');
-    
-    dragState.id = null; dragState.el = null;
+    update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x: parseFloat(dragState.el.style.left), y: parseFloat(dragState.el.style.top) });
     document.removeEventListener('pointermove', onMove);
-    document.removeEventListener('pointercancel', onUp);
+    dragState.id = null;
   }
 
-  function handleDragStart(e, id) {
-      if(window.currentLayout === 'canvas') { e.preventDefault(); return; }
-      if (e.target.closest('.post-btn,.like-btn,.comment-input,.post-link,.post-img,.post-file,.yt-thumb-wrap')) { e.preventDefault(); return; }
-      
-      e.dataTransfer.setData('text/plain', id);
-      e.dataTransfer.effectAllowed = 'move';
-      setTimeout(() => { if(localPosts[id]) localPosts[id].classList.add('is-dragging-node'); }, 0); 
-  }
-  
-  function handleDragEnd(e) {
-      document.querySelectorAll('.post-it').forEach(el => el.classList.remove('is-dragging-node'));
-  }
-  
-  function handleDropOnWall(e, targetId) {
-      e.preventDefault(); e.stopPropagation();
-      
-      const draggedId = e.dataTransfer.getData('text/plain');
-      if(!draggedId || draggedId === targetId) return;
-
-      const targetPost = allPostsData[targetId];
-      if(!targetPost) return;
-
-      const targetEl = e.currentTarget;
-      const rect = targetEl.getBoundingClientRect();
-      const isBottomHalf = (e.clientY - rect.top) > (rect.height / 2);
-
-      const order = document.getElementById('postOrderSelect').value;
-      let newTime = targetPost.createdAt;
-      const offset = 0.001; 
-
-      if (order === 'top') {
-          newTime += isBottomHalf ? -offset : offset;
-      } else {
-          newTime += isBottomHalf ? offset : -offset;
+  window.openWriteModal = () => {
+      const txt = prompt("아이디어를 입력하세요:");
+      if(txt?.trim()) {
+          push(boardRef, { content: txt.trim(), author: myName, x: 100, y: 100, createdAt: Date.now() });
       }
-
-      let updates = { createdAt: newTime };
-
-      if(window.currentLayout === 'column') {
-         const colWrap = targetEl.closest('.column-wrap');
-         if (colWrap) {
-             updates.columnId = colWrap.id.replace('col-', '');
-         }
-      }
-
-      update(ref(db, `boards/${currentBoardId}/posts/${draggedId}`), updates);
-      document.querySelectorAll('.post-it').forEach(el => el.classList.remove('is-dragging-node'));
-  }
+  };
+  
+  window.exitToLobby = () => { window.location.hash = ''; window.location.reload(); };
 }
