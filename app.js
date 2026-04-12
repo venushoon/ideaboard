@@ -7,23 +7,26 @@ window.applyMasonry = () => {};
 window.updateCanvasSize = () => {}; 
 window.currentLayout = 'canvas';
 
-// 🌟 어뷰징 방지: 게스트(학생)용 고유 기기 식별자
+// 어뷰징 방지: 게스트(학생)용 고유 기기 식별자
 let myDeviceId = localStorage.getItem('device_id');
 if (!myDeviceId) {
     myDeviceId = 'guest_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
     localStorage.setItem('device_id', myDeviceId);
 }
 
-// 🌟 성능 최적화: 레이아웃 디바운싱 (화면 덜덜거림 방지)
+// 🌟 성능 최적화 및 🔴 FIX: 담벼락 드래그 오류 해결 (renderPostsOrder 추가)
 window.debouncedLayout = (() => {
     let timer = null;
     return () => {
         clearTimeout(timer);
         timer = setTimeout(() => {
+            // 담벼락이든 컬럼이든 먼저 순서(DOM)를 재정렬해야 드래그 결과가 반영됨
+            if (window.currentLayout === 'wall' || window.currentLayout === 'column') {
+                renderPostsOrder();
+            }
             if (window.currentLayout === 'wall') window.applyMasonry();
-            else if (window.currentLayout === 'column') renderPostsOrder();
             if (window.currentLayout === 'canvas') window.updateCanvasSize();
-        }, 150); // 0.15초 동안 추가 변경이 없으면 1번만 정렬 실행
+        }, 150); 
     };
 })();
 
@@ -62,7 +65,7 @@ window.openImageViewer = url => { document.getElementById('imageViewerImg').src 
 window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
 window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
 
-/* ── 3-1. 이미지 캡처 (용량 최적화 유지) ── */
+/* ── 3-1. 이미지 캡처 ── */
 window.downloadImage = async () => {
     window.showToast("고화질 이미지 생성 중...");
     try {
@@ -94,7 +97,7 @@ window.downloadImage = async () => {
     } catch(e) { window.showToast("이미지 저장 실패"); }
 };
 
-/* ── 3-2. 스마트 PDF 엔진 (다페이지 핀터레스트 픽스 유지) ── */
+/* ── 3-2. 스마트 PDF 엔진 ── */
 window.downloadPDF = async () => {
     const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
     const origText = tWrap.textContent; tWrap.textContent = '문서 최적화 중…'; iWrap.textContent = '⏳';
@@ -242,11 +245,11 @@ window.getYoutubeId = function(url) {
     return (match && match[1]) ? match[1] : null;
 };
 
+
 // ─────────────────────────────────────────────
-// 5. Firebase 연동 (🌟 onChild 최적화 적용)
+// 5. Firebase 연동 및 하이브리드 로그인/마스터 관리 로직
 // ─────────────────────────────────────────────
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-// 🔥 성능 개선을 위해 onChildAdded, onChildChanged, onChildRemoved 모듈을 가져옵니다!
 import { getDatabase, ref, onValue, set, update, push, remove, get, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
@@ -519,6 +522,7 @@ function initLobbyApp() {
         trashSection.style.display = hasTrash ? 'block' : 'none';
     });
 
+    // 🔴 FIX: 보드 생성 시 타이틀을 settings 노드에도 정확히 저장 (ID로 출력되는 버그 해결)
     window.createBoardFromLobby = async () => {
         const name = prompt('새 보드 이름:');
         if (name?.trim()) { 
@@ -532,8 +536,12 @@ function initLobbyApp() {
                 if(!snap.exists()) isUnique = true;
             }
             
+            // meta와 settings 모두에 title 저장
             await set(ref(db, `board_meta/${newBoardId}`), {
                 title: name.trim(), ownerUid: currentUserUid, roomCode: roomCode, updatedAt: Date.now()
+            });
+            await set(ref(db, `boards/${newBoardId}/settings`), {
+                title: name.trim()
             });
             await set(ref(db, `room_codes/${roomCode}`), newBoardId);
             
@@ -635,8 +643,8 @@ function initBoardApp() {
 
   onValue(settingsRef, snap => {
     const s = snap.val() || {};
-    const bTitle = s.title || `🤝 ${currentBoardId} 보드`;
-    const bDesc = s.description || `설명이 없습니다.`;
+    // 설정이나 meta에 저장된 타이틀을 우선 사용 (없으면 기본값)
+    const bTitle = s.title || `🤝 아이디어 보드`;
     document.getElementById('boardTitleText').textContent = bTitle;
     
     onValue(metaRef, metaSnap => {
@@ -645,8 +653,14 @@ function initBoardApp() {
             const el = document.getElementById('displayRoomCode');
             if(el) el.textContent = meta.roomCode;
         }
+        // 로비에서 넘어왔는데 settings에 title이 없는 엣지 케이스 방지
+        if (meta.title && !s.title) {
+             document.getElementById('boardTitleText').textContent = meta.title;
+             if(document.activeElement.id !== 'sbTitleInput') document.getElementById('sbTitleInput').value = meta.title;
+        }
     }, {onlyOnce: true});
 
+    const bDesc = s.description || `설명이 없습니다.`;
     if(document.activeElement.id !== 'sbTitleInput') document.getElementById('sbTitleInput').value = bTitle;
     if(document.activeElement.id !== 'sbDescInput') document.getElementById('sbDescInput').value = bDesc;
     
@@ -693,7 +707,7 @@ function initBoardApp() {
     localColumnsData = snap.val() || {}; renderColumns(); renderPostsOrder(); window.debouncedLayout();
   });
 
-  // 🌟 성능 향상: 전체 새로고침(onValue)을 부분 구독(onChild)으로 교체!
+  // 🌟 부분 렌더링 최적화 
   onChildAdded(boardRef, snap => {
       const id = snap.key;
       const p = snap.val();
@@ -715,7 +729,6 @@ function initBoardApp() {
       const el = localPosts[id];
       if (el) {
           updatePostEl(el, id, p);
-          // 컬럼 레이아웃에서 다른 단으로 이동했을 경우
           if (window.currentLayout === 'column') {
               const targetBodyId = `colbody-${p.columnId || Object.keys(localColumnsData)[0]}`;
               if (el.parentElement && el.parentElement.id !== targetBodyId) {
@@ -804,7 +817,6 @@ function initBoardApp() {
     el.style.backgroundColor = p.color || '#ffffff';
     let html = '';
     if(p.fileData) {
-        // 🌟 성능 최적화: 이미지가 로드된 후 디바운스 레이아웃 호출 (덜덜거림 방지)
         if(p.fileData.isImage) html += `<img src="${p.fileData.url}" class="post-img" alt="첨부이미지" onload="window.debouncedLayout && window.debouncedLayout()" onclick="window.openImageViewer('${p.fileData.url}')">`;
         else html += `<a href="${p.fileData.url}" download="${p.fileData.name}" class="post-file">📁 ${p.fileData.name}</a>`;
     }
@@ -821,7 +833,6 @@ function initBoardApp() {
     html += `<div class="post-text">${window.escapeHtml(p.content || '')}</div>`;
     el.querySelector('.post-body-content').innerHTML = html;
 
-    // 좋아요 UI 업데이트 (레거시 지원 포함)
     let likeCount = 0;
     let hasLiked = false;
     const uid = currentUserUid || myDeviceId;
@@ -1045,7 +1056,6 @@ function initBoardApp() {
 
   window.deletePost = id => { if (confirm('이 포스트잇을 삭제할까요?')) remove(ref(db, `boards/${currentBoardId}/posts/${id}`)); };
   
-  // 🌟 어뷰징 방지 좋아요 로직
   window.toggleLike = async id => {
     const p = allPostsData[id];
     if (!p) return;
