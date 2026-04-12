@@ -1,3 +1,5 @@
+
+```markdown
 # 📋 나만의 아이디어 보드 (Ultimate)
 
 학교 현장과 팀 협업을 위해 제작된 **실시간 온라인 포스트잇 게시판(SaaS형 웹 애플리케이션)**입니다. 
@@ -48,6 +50,14 @@
        ".write": true
      }
    }
+   ```
+3. **Authentication (인증)** 설정에서 `Google` 제공업체를 사용 설정(Enable)합니다.
+4. **Authentication -> Settings -> 승인된 도메인**에 배포할 사이트 주소(예: `your-username.github.io`)를 추가합니다.
+
+### 2. 소스 코드 연결
+`app.js` 파일을 열고, 상단의 `firebaseConfig` 객체와 마스터 관리자 이메일을 본인의 프로젝트 정보로 변경합니다.
+
+```javascript
 // app.js 내부
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
@@ -60,9 +70,25 @@ const firebaseConfig = {
 };
 
 // 마스터 권한을 가질 선생님의 구글 이메일 입력
-const MASTER_ADMIN_EMAIL = "teacher@gmail.com";
+const MASTER_ADMIN_EMAIL = "teacher@gmail.com"; 
+```
 
+### 3. 배포
+`index.html`, `style.css`, `app.js` 3개의 파일을 동일한 폴더에 넣고 웹 서버(GitHub Pages, Vercel 등)에 업로드하면 즉시 사용할 수 있습니다.
+
+<br>
+
+## 📁 폴더 구조 (File Structure)
+
+```text
 📦 Idea-Board-Ultimate
  ┣ 📜 index.html  # 앱의 전체 뼈대 및 모달/뷰 UI 구조
  ┣ 📜 style.css   # 반응형 디자인, 테마, 애니메이션 스타일
  ┗ 📜 app.js      # Firebase 연동, 드래그/스크롤 알고리즘, PDF 엔진 등 핵심 비즈니스 로직
+```
+
+<br>
+
+## 📝 라이선스 (License)
+This project is for educational and personal use. Feel free to use, modify, and distribute.
+```
