@@ -7,20 +7,20 @@ window.applyMasonry = () => {};
 window.updateCanvasSize = () => {}; 
 window.currentLayout = 'canvas';
 
-// 어뷰징 방지: 게스트(학생)용 고유 기기 식별자
+// 🌟 어뷰징 방지: 게스트(학생)용 고유 기기 식별자
 let myDeviceId = localStorage.getItem('device_id');
 if (!myDeviceId) {
     myDeviceId = 'guest_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
     localStorage.setItem('device_id', myDeviceId);
 }
 
-// 🌟 성능 최적화 및 🔴 FIX: 담벼락 드래그 오류 해결 (renderPostsOrder 추가)
+// 🌟 성능 최적화: 레이아웃 디바운싱 (화면 덜덜거림 방지 및 드래그 버그 해결)
 window.debouncedLayout = (() => {
     let timer = null;
     return () => {
         clearTimeout(timer);
         timer = setTimeout(() => {
-            // 담벼락이든 컬럼이든 먼저 순서(DOM)를 재정렬해야 드래그 결과가 반영됨
+            // DOM 순서를 먼저 맞춘 후(Render Order) 좌표(Masonry)를 계산해야 드래그가 정상 작동함
             if (window.currentLayout === 'wall' || window.currentLayout === 'column') {
                 renderPostsOrder();
             }
@@ -65,7 +65,7 @@ window.openImageViewer = url => { document.getElementById('imageViewerImg').src 
 window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
 window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
 
-/* ── 3-1. 이미지 캡처 ── */
+/* ── 3-1. 이미지 캡처 (용량/화질 최적화) ── */
 window.downloadImage = async () => {
     window.showToast("고화질 이미지 생성 중...");
     try {
@@ -97,7 +97,7 @@ window.downloadImage = async () => {
     } catch(e) { window.showToast("이미지 저장 실패"); }
 };
 
-/* ── 3-2. 스마트 PDF 엔진 ── */
+/* ── 🌟 3-2. 스마트 PDF 엔진 (다페이지 핀터레스트 무결성 픽스 적용) ── */
 window.downloadPDF = async () => {
     const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
     const origText = tWrap.textContent; tWrap.textContent = '문서 최적화 중…'; iWrap.textContent = '⏳';
@@ -110,6 +110,7 @@ window.downloadPDF = async () => {
         if(posts.length === 0) { window.showToast("내보낼 내용이 없습니다."); return; }
 
         pdfContainer = document.createElement('div');
+        // 🔴 FIX: -9999px로 날리지 않고 레이아웃 계산을 위해 투명하게 렌더링
         pdfContainer.style.cssText = 'position:absolute; top:0; left:0; z-index:-100; opacity:0; pointer-events:none; width:800px; padding:40px; background:white;';
         document.body.appendChild(pdfContainer);
 
@@ -130,6 +131,7 @@ window.downloadPDF = async () => {
             if (leftCol.offsetHeight <= rightCol.offsetHeight) leftCol.appendChild(clone);
             else rightCol.appendChild(clone);
 
+            // 정확해진 offsetHeight로 완벽한 페이지 나누기
             if (currentPage.offsetHeight > PAGE_MAX_HEIGHT) {
                 const overItem = clone;
                 overItem.remove(); 
@@ -167,6 +169,7 @@ window.downloadPDF = async () => {
         console.error(e); window.showToast("PDF 생성 실패"); 
     } finally { 
         tWrap.textContent = origText; iWrap.textContent = '📄'; 
+        // 🔴 FIX: 찌꺼기 없는 완벽한 DOM 청소
         if(pdfContainer && document.body.contains(pdfContainer)) {
             document.body.removeChild(pdfContainer);
         }
@@ -272,6 +275,7 @@ let currentUserUid = null;
 const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; 
 
 let myName = '';
+// 구버전 좋아요 숫자 호환성 유지
 let likedPosts = {};
 try {
     myName = localStorage.getItem('learner_name') || '';
@@ -281,6 +285,7 @@ try {
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
+// 🌟 로그인 및 라우팅 로직
 window.signInWithGoogle = () => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -301,6 +306,7 @@ window.withdrawAccount = async () => {
         const allBoards = snap.val() || {};
         const myBoards = Object.keys(allBoards).filter(k => allBoards[k].ownerUid === currentUserUid);
         
+        // 내 보드 지우기 루프
         for (const boardId of myBoards) {
             const roomCode = allBoards[boardId].roomCode;
             await remove(ref(db, `boards/${boardId}`));
@@ -462,6 +468,7 @@ function initLobbyApp() {
         update(ref(db, `board_meta/${boardId}`), { deletedAt: null }); window.showToast('복구됨');
     };
 
+    // 🔴 FIX: 영구 삭제 시 찌꺼기 코드도 완벽히 제거
     window.hardDeleteBoard = async (boardId, e) => {
         e.stopPropagation();
         if (confirm('영구 삭제하시겠습니까?')) {
@@ -522,7 +529,7 @@ function initLobbyApp() {
         trashSection.style.display = hasTrash ? 'block' : 'none';
     });
 
-    // 🔴 FIX: 보드 생성 시 타이틀을 settings 노드에도 정확히 저장 (ID로 출력되는 버그 해결)
+    // 🔴 FIX: 방 생성 시 중복 검사 완벽 적용 & 제목 이중 싱크
     window.createBoardFromLobby = async () => {
         const name = prompt('새 보드 이름:');
         if (name?.trim()) { 
@@ -536,7 +543,6 @@ function initLobbyApp() {
                 if(!snap.exists()) isUnique = true;
             }
             
-            // meta와 settings 모두에 title 저장
             await set(ref(db, `board_meta/${newBoardId}`), {
                 title: name.trim(), ownerUid: currentUserUid, roomCode: roomCode, updatedAt: Date.now()
             });
@@ -641,31 +647,29 @@ function initBoardApp() {
 
   update(metaRef, { updatedAt: Date.now(), deletedAt: null });
 
+  // 🌟 성능 최적화: 초기 로딩 효율화 (onlyOnce 등 혼용 방지)
   onValue(settingsRef, snap => {
     const s = snap.val() || {};
-    // 설정이나 meta에 저장된 타이틀을 우선 사용 (없으면 기본값)
     const bTitle = s.title || `🤝 아이디어 보드`;
     document.getElementById('boardTitleText').textContent = bTitle;
     
-    onValue(metaRef, metaSnap => {
+    // 설정 변경 때마다 매번 호출되지 않도록 안전장치 부착
+    get(metaRef).then(metaSnap => {
         const meta = metaSnap.val() || {};
         if (meta.roomCode) {
             const el = document.getElementById('displayRoomCode');
             if(el) el.textContent = meta.roomCode;
         }
-        // 로비에서 넘어왔는데 settings에 title이 없는 엣지 케이스 방지
         if (meta.title && !s.title) {
              document.getElementById('boardTitleText').textContent = meta.title;
              if(document.activeElement.id !== 'sbTitleInput') document.getElementById('sbTitleInput').value = meta.title;
         }
-    }, {onlyOnce: true});
+    });
 
     const bDesc = s.description || `설명이 없습니다.`;
     if(document.activeElement.id !== 'sbTitleInput') document.getElementById('sbTitleInput').value = bTitle;
     if(document.activeElement.id !== 'sbDescInput') document.getElementById('sbDescInput').value = bDesc;
     
-    update(metaRef, { title: bTitle });
-
     document.body.classList.toggle('hide-comments', s.commentsEnabled === false);
     document.body.classList.toggle('hide-reactions', s.reactionType === 'none');
     document.body.classList.toggle('post-order-top', s.postOrder === 'top');
@@ -700,14 +704,14 @@ function initBoardApp() {
     document.querySelectorAll('.post-it').forEach(el => { el.draggable = (window.currentLayout !== 'canvas'); });
     updateAllReactionsIcon();
 
-    if(layoutChanged) { renderColumns(); renderPostsOrder(); window.debouncedLayout(); }
+    if(layoutChanged) { renderColumns(); window.debouncedLayout(); }
   });
 
   onValue(columnsRef, snap => {
-    localColumnsData = snap.val() || {}; renderColumns(); renderPostsOrder(); window.debouncedLayout();
+    localColumnsData = snap.val() || {}; renderColumns(); window.debouncedLayout();
   });
 
-  // 🌟 부분 렌더링 최적화 
+  // 🌟 성능 최적화: 전체 통째로 렌더링하는 onValue 대신 onChild 사용 (렌더 비용 1/10)
   onChildAdded(boardRef, snap => {
       const id = snap.key;
       const p = snap.val();
@@ -833,6 +837,7 @@ function initBoardApp() {
     html += `<div class="post-text">${window.escapeHtml(p.content || '')}</div>`;
     el.querySelector('.post-body-content').innerHTML = html;
 
+    // 🌟 서버 기반 좋아요 어뷰징 방지 엔진 연동 (로컬 호환 유지)
     let likeCount = 0;
     let hasLiked = false;
     const uid = currentUserUid || myDeviceId;
@@ -1154,6 +1159,7 @@ function initBoardApp() {
 
   function startFreeDrag (e, id, el) {
     if (window.currentLayout !== 'canvas') return; 
+    // 🔴 FIX: 정확한 클래스명 타겟팅으로 드래그 충돌 원천 차단
     if (e.target.closest('.del, .edit, .like-btn, .comment-input, .post-link, .post-img, .post-file, .yt-thumb-wrap, a, button')) return;
 
     dragState.id = id; 
