@@ -92,6 +92,19 @@
   <button class="fab" onclick="openWriteModal(null)" title="아이디어 남기기">＋</button>
 </div>
 
+<div class="overlay" id="customDialog" style="z-index: 999999;">
+    <div class="modal-content" style="max-width: 360px; text-align: center; padding: 32px 24px;">
+        <div id="cdIcon" style="font-size: 3rem; margin-bottom: 16px;">💡</div>
+        <h3 id="cdTitle" style="margin: 0 0 12px 0; font-size: 1.3rem; font-weight: 900; color: var(--ink);">알림</h3>
+        <p id="cdMessage" style="color: var(--ink-3); font-size: 0.95rem; margin-bottom: 24px; line-height: 1.5; word-break: keep-all;"></p>
+        <input type="text" id="cdInput" class="modal-input" style="display: none; margin-bottom: 24px; text-align: center; font-weight: 800;" onkeydown="if(event.key==='Enter') document.getElementById('cdConfirmBtn').click();">
+        <div style="display: flex; gap: 12px; justify-content: center;">
+            <button id="cdCancelBtn" class="btn btn-cancel" style="flex: 1; display: none;">취소</button>
+            <button id="cdConfirmBtn" class="btn btn-primary" style="flex: 1; padding: 14px !important;">확인</button>
+        </div>
+    </div>
+</div>
+
 <div class="overlay" id="adminModal" onclick="closeBgClick(event,'adminModal')">
   <div class="modal-content" style="max-width: 800px; max-height: 85vh; display: flex; flex-direction: column;">
       <div class="modal-header">
@@ -112,7 +125,7 @@
                   </tr>
               </thead>
               <tbody id="adminBoardList">
-                  </tbody>
+              </tbody>
           </table>
       </div>
   </div>
@@ -142,7 +155,7 @@
     <h2 style="font-weight:900; font-size: 1.5rem; margin:0 0 8px 0; color: var(--ink);">반가워요!</h2>
     <p style="color:var(--ink-3); margin-bottom:24px;">보드에서 사용할 이름을 입력해 주세요.</p>
     <input id="nameInput" class="modal-input" style="text-align:center; font-weight:800; font-size:1.15rem; margin-bottom:24px;" type="text" placeholder="이름 또는 닉네임" onkeydown="if(event.key==='Enter') confirmName()">
-    <button class="btn-primary" style="width:100%; background:var(--primary);" onclick="confirmName()">시작하기</button>
+    <button class="btn-primary" onclick="confirmName()">시작하기</button>
   </div>
 </div>
 
@@ -232,7 +245,7 @@
                 <div class="share-action-left">
                     <div class="share-icon-wrap">🖼️</div>
                     <div class="share-label-wrap">
-                        <span class="share-label">이미지(PNG)로 저장</span>
+                        <span class="share-label">이미지(JPEG)로 저장</span>
                     </div>
                 </div>
                 <div class="share-action-right">›</div>
