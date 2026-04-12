@@ -7,6 +7,13 @@ window.applyMasonry = () => {};
 window.updateCanvasSize = () => {}; 
 window.currentLayout = 'canvas';
 
+// 🌟 어뷰징 방지: 게스트(학생)용 고유 기기 식별자 생성 및 유지
+let myDeviceId = localStorage.getItem('device_id');
+if (!myDeviceId) {
+    myDeviceId = 'guest_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+    localStorage.setItem('device_id', myDeviceId);
+}
+
 /* ── 2. UI 공통 전역 함수 ── */
 window.showToast = msg => { 
     const t = document.getElementById('toast'); 
@@ -74,12 +81,11 @@ window.downloadImage = async () => {
     } catch(e) { window.showToast("이미지 저장 실패"); }
 };
 
-/* ── 🌟 3-2. 스마트 PDF 엔진 (픽스 적용 완료) ── */
+/* ── 3-2. 스마트 PDF 엔진 (픽스 유지) ── */
 window.downloadPDF = async () => {
     const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
     const origText = tWrap.textContent; tWrap.textContent = '문서 최적화 중…'; iWrap.textContent = '⏳';
-    
-    let pdfContainer = null; // finally에서 삭제하기 위해 스코프 상단에 선언
+    let pdfContainer = null;
 
     try {
         window.showToast("보고서를 구성하고 있습니다...");
@@ -88,7 +94,6 @@ window.downloadPDF = async () => {
         if(posts.length === 0) { window.showToast("내보낼 내용이 없습니다."); return; }
 
         pdfContainer = document.createElement('div');
-        // 🔴 FIX: -9999px 대신 레이아웃 계산을 정확히 하도록 투명하게 덮어둠
         pdfContainer.style.cssText = 'position:absolute; top:0; left:0; z-index:-100; opacity:0; pointer-events:none; width:800px; padding:40px; background:white;';
         document.body.appendChild(pdfContainer);
 
@@ -109,7 +114,6 @@ window.downloadPDF = async () => {
             if (leftCol.offsetHeight <= rightCol.offsetHeight) leftCol.appendChild(clone);
             else rightCol.appendChild(clone);
 
-            // 🔴 FIX: 이제 정확한 높이(offsetHeight)가 계산되어 페이지가 완벽히 나뉨
             if (currentPage.offsetHeight > PAGE_MAX_HEIGHT) {
                 const overItem = clone;
                 overItem.remove(); 
@@ -147,7 +151,6 @@ window.downloadPDF = async () => {
         console.error(e); window.showToast("PDF 생성 실패"); 
     } finally { 
         tWrap.textContent = origText; iWrap.textContent = '📄'; 
-        // 🔴 FIX: 에러가 나도 DOM에 남지 않도록 완벽히 청소
         if(pdfContainer && document.body.contains(pdfContainer)) {
             document.body.removeChild(pdfContainer);
         }
@@ -253,6 +256,7 @@ let currentUserUid = null;
 const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; 
 
 let myName = '';
+// 🌟 구버전 호환성을 위해 로컬스토리지 유지
 let likedPosts = {};
 try {
     myName = localStorage.getItem('learner_name') || '';
@@ -356,7 +360,6 @@ onAuthStateChanged(auth, (user) => {
         try { localStorage.setItem('learner_name', myName); } catch(e) {}
         
         document.getElementById('userDisplayName').textContent = myName;
-        // 인라인 스타일과 충돌 방지를 위해 직접 display 제어
         document.getElementById('withdrawBtn').style.display = 'block'; 
         
         if(user.email === MASTER_ADMIN_EMAIL) {
@@ -444,7 +447,6 @@ function initLobbyApp() {
         update(ref(db, `board_meta/${boardId}`), { deletedAt: null }); window.showToast('복구됨');
     };
 
-    // 🔴 FIX: 로비에서 휴지통 영구 삭제 시에도 roomCode 완벽 삭제 처리
     window.hardDeleteBoard = async (boardId, e) => {
         e.stopPropagation();
         if (confirm('영구 삭제하시겠습니까?')) {
@@ -505,7 +507,6 @@ function initLobbyApp() {
         trashSection.style.display = hasTrash ? 'block' : 'none';
     });
 
-    // 🔴 FIX: 방 생성 시 무결성 보장 (방 코드가 우연히 겹치는 문제 원천 차단)
     window.createBoardFromLobby = async () => {
         const name = prompt('새 보드 이름:');
         if (name?.trim()) { 
@@ -781,10 +782,25 @@ function initBoardApp() {
     html += `<div class="post-text">${window.escapeHtml(p.content || '')}</div>`;
     el.querySelector('.post-body-content').innerHTML = html;
 
-    const liked = !!(likedPosts[id]);
+    // 🌟 서버 기반 좋아요 검증 로직으로 UI 업데이트
+    let likeCount = 0;
+    let hasLiked = false;
+    const uid = currentUserUid || myDeviceId;
+    
+    if (p.likes) {
+        if (typeof p.likes === 'object') {
+            likeCount = Object.keys(p.likes).length;
+            hasLiked = !!p.likes[uid];
+        } else {
+            // 구버전(숫자) 데이터 호환성 유지
+            likeCount = Number(p.likes);
+            hasLiked = !!likedPosts[id]; 
+        }
+    }
+
     const likeBtn = el.querySelector('.like-btn');
-    likeBtn.classList.toggle('liked', liked);
-    el.querySelector('.like-count').textContent = p.likes || 0;
+    likeBtn.classList.toggle('liked', hasLiked);
+    el.querySelector('.like-count').textContent = likeCount;
 
     const list = el.querySelector('.comment-list');
     let cHtml = '';
@@ -908,8 +924,6 @@ function initBoardApp() {
     if (el.parentElement !== target) target.appendChild(el);
   }
 
-  function reassignAllPosts () { Object.keys(localPosts).forEach(id => { if (allPostsData[id]) placePost(localPosts[id], allPostsData[id].columnId); }); }
-
   function refreshAllAuthors () {
     Object.keys(localPosts).forEach(id => {
       const el = localPosts[id]; const sp = el.querySelector('.post-author'); const av = el.querySelector('.author-avatar');
@@ -984,7 +998,6 @@ function initBoardApp() {
         author:    myName,
         x:         rand(window.innerWidth  / 2 - 137, 40),
         y:         rand(window.innerHeight / 2 - 80,  40),
-        likes:     0,
         columnId:  currentColId || null,
         createdAt: Date.now()
       });
@@ -995,24 +1008,44 @@ function initBoardApp() {
 
   window.deletePost = id => { if (confirm('이 포스트잇을 삭제할까요?')) remove(ref(db, `boards/${currentBoardId}/posts/${id}`)); };
   
-  window.toggleLike = id => {
-    if (likedPosts[id]) { window.showToast('이미 반응을 남겼어요!'); return; }
+  // 🌟 좋아요 (서버 검증 방식 및 레거시 데이터 호환 처리 완료)
+  window.toggleLike = async id => {
+    const p = allPostsData[id];
+    if (!p) return;
+    const uid = currentUserUid || myDeviceId;
+    
+    // 옛날에 만들어진 포스트잇(숫자로 기록된 경우) 호환성 처리
+    if (typeof p.likes === 'number') {
+        if (likedPosts[id]) { window.showToast('이미 반응을 남겼어요!'); return; }
+        await update(ref(db, `boards/${currentBoardId}/posts/${id}`), { likes: p.likes + 1 });
+        likedPosts[id] = true;
+        try { localStorage.setItem('liked_posts', JSON.stringify(likedPosts)); } catch(e){}
+        animateLikeBtn(id);
+    } else {
+        // 완벽한 어뷰징 방지 처리 (DB에 기록)
+        const likeRef = ref(db, `boards/${currentBoardId}/posts/${id}/likes/${uid}`);
+        try {
+            const snap = await get(likeRef);
+            if (snap.exists()) {
+                window.showToast('이미 반응을 남겼어요!');
+            } else {
+                await set(likeRef, true);
+                animateLikeBtn(id);
+            }
+        } catch (e) { console.error(e); }
+    }
+  };
+  
+  function animateLikeBtn(id) {
     const el = localPosts[id];
     if(el) {
         const btn = el.querySelector('.like-btn');
-        const countSpan = el.querySelector('.like-count');
-        const currentCount = parseInt(countSpan.textContent) || 0;
         btn.classList.add('liked');
-        countSpan.textContent = currentCount + 1;
         const icon = btn.querySelector('.like-icon');
         icon.style.transform = 'scale(1.6)'; 
         setTimeout(() => icon.style.transform = '', 200);
     }
-    const cur = allPostsData[id]?.likes || 0;
-    update(ref(db, `boards/${currentBoardId}/posts/${id}`), { likes: cur + 1 });
-    likedPosts[id] = true; 
-    try { localStorage.setItem('liked_posts', JSON.stringify(likedPosts)); } catch(e){}
-  };
+  }
   
   window.addComment = (id, text, inputEl) => { push(ref(db, `boards/${currentBoardId}/posts/${id}/comments`), { author: myName, text, timestamp: Date.now() }); };
 
@@ -1076,9 +1109,9 @@ function initBoardApp() {
       autoScrollRAF = requestAnimationFrame(autoScrollLoop);
   }
 
-  // 🔴 FIX: 가장 정확한 클래스명 타겟팅으로 드래그 충돌 원천 차단
   function startFreeDrag (e, id, el) {
     if (window.currentLayout !== 'canvas') return; 
+    // 🔴 FIX: 정확한 클래스명 타겟팅으로 드래그 충돌 원천 차단
     if (e.target.closest('.del, .edit, .like-btn, .comment-input, .post-link, .post-img, .post-file, .yt-thumb-wrap, a, button')) return;
 
     dragState.id = id; 
