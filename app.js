@@ -7,7 +7,6 @@ window.applyMasonry = () => {};
 window.updateCanvasSize = () => {}; 
 window.currentLayout = 'canvas';
 
-/* ── 2. UI 공통 전역 함수 ── */
 window.showToast = msg => { 
     const t = document.getElementById('toast'); 
     if(!t) return;
@@ -139,6 +138,7 @@ const db  = getDatabase(app);
 const auth = getAuth(app); 
 
 let currentUserUid = null;
+/* 🔥 마스터 관리자 이메일을 여기에 입력하세요! */
 const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; 
 
 let myName = '';
@@ -151,39 +151,54 @@ try {
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
-// 🌟 로그인 및 권한 관리 함수 (계정 선택 창 띄우기 옵션 유지)
+// 🌟 로그인 및 회원가입 관련
 window.signInWithGoogle = () => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    
-    signInWithPopup(auth, provider).catch(error => {
-        console.error(error);
-        window.showToast("로그인 실패: " + error.message);
-    });
+    signInWithPopup(auth, provider).catch(error => { console.error(error); window.showToast("로그인 실패: " + error.message); });
 };
 
 window.logout = () => {
-    signOut(auth).then(() => {
-        window.location.hash = ''; window.location.reload();
-    });
+    signOut(auth).then(() => { window.location.hash = ''; window.location.reload(); });
+};
+
+// 🌟 회원 탈퇴 로직 (내 데이터 영구 파기)
+window.withdrawAccount = async () => {
+    if(!currentUserUid) return;
+    if(!confirm("정말 탈퇴하시겠습니까?\n선생님이 생성하신 '모든 보드와 데이터'가 서버에서 영구적으로 파기되며 복구할 수 없습니다.")) return;
+
+    window.showToast("데이터를 파기하는 중...");
+    try {
+        const snap = await get(ref(db, 'board_meta'));
+        const allBoards = snap.val() || {};
+        const myBoards = Object.keys(allBoards).filter(k => allBoards[k].ownerUid === currentUserUid);
+        
+        // 내 보드 지우기 루프
+        for (const boardId of myBoards) {
+            const roomCode = allBoards[boardId].roomCode;
+            await remove(ref(db, `boards/${boardId}`));
+            await remove(ref(db, `board_meta/${boardId}`));
+            if(roomCode) await remove(ref(db, `room_codes/${roomCode}`));
+        }
+        
+        window.showToast("탈퇴 처리가 완료되었습니다.");
+        setTimeout(() => window.logout(), 1500); // 1.5초 뒤 자동 로그아웃
+    } catch(e) {
+        window.showToast("오류가 발생했습니다.");
+    }
 };
 
 window.enterWithCode = async () => {
     const code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
     if(code.length < 4) { window.showToast("코드를 정확히 입력하세요."); return; }
-    
     try {
         const snap = await get(ref(db, `room_codes/${code}`));
-        if(snap.exists()) {
-            window.location.hash = `board=${snap.val()}`; window.location.reload();
-        } else {
-            window.showToast("존재하지 않는 코드입니다.");
-        }
-    } catch (e) {
-        window.showToast("오류가 발생했습니다. 다시 시도해주세요.");
-    }
+        if(snap.exists()) { window.location.hash = `board=${snap.val()}`; window.location.reload(); } 
+        else { window.showToast("존재하지 않는 코드입니다."); }
+    } catch (e) { window.showToast("오류가 발생했습니다. 다시 시도해주세요."); }
 };
 
+// 🌟 마스터 대시보드 로직 (관리자 팝업 안에서만 전체 보드 보임)
 window.openMasterAdmin = async () => {
     window.openModal('adminModal');
     const listEl = document.getElementById('adminBoardList');
@@ -194,10 +209,7 @@ window.openMasterAdmin = async () => {
         const data = snap.val() || {};
         const boards = Object.keys(data).map(k => ({ id: k, ...data[k] })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
-        if(boards.length === 0) {
-            listEl.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px;">생성된 보드가 없습니다.</td></tr>';
-            return;
-        }
+        if(boards.length === 0) { listEl.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px;">생성된 보드가 없습니다.</td></tr>'; return; }
 
         let html = '';
         boards.forEach(b => {
@@ -216,9 +228,7 @@ window.openMasterAdmin = async () => {
             `;
         });
         listEl.innerHTML = html;
-    } catch(e) {
-        listEl.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px; color: red;">데이터를 불러오는 데 실패했습니다.</td></tr>';
-    }
+    } catch(e) { listEl.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px; color: red;">데이터를 불러오는 데 실패했습니다.</td></tr>'; }
 };
 
 window.forceDeleteBoard = async (boardId, roomCode) => {
@@ -226,27 +236,21 @@ window.forceDeleteBoard = async (boardId, roomCode) => {
         try {
             await remove(ref(db, `boards/${boardId}`));
             await remove(ref(db, `board_meta/${boardId}`));
-            if(roomCode && roomCode !== '없음') {
-                await remove(ref(db, `room_codes/${roomCode}`));
-            }
-            window.showToast('강제 삭제 완료');
-            window.openMasterAdmin(); 
-        } catch(e) {
-            window.showToast('삭제 중 오류 발생');
-        }
+            if(roomCode && roomCode !== '없음') await remove(ref(db, `room_codes/${roomCode}`));
+            window.showToast('강제 삭제 완료'); window.openMasterAdmin(); 
+        } catch(e) { window.showToast('삭제 중 오류 발생'); }
     }
 };
 
-// 🌟 인증 상태 감지 (이름 자동 설정 핵심)
+// 인증 상태 감지
 onAuthStateChanged(auth, (user) => {
     if (user) {
         currentUserUid = user.uid;
-        
-        // 🌟 선생님 (구글 로그인)인 경우 이름 팝업을 띄우지 않도록 myName 자동 채우기!
         myName = user.displayName || "선생님";
         try { localStorage.setItem('learner_name', myName); } catch(e) {}
         
         document.getElementById('userDisplayName').textContent = myName;
+        document.getElementById('withdrawBtn').style.display = 'block'; // 탈퇴 버튼 보이기
         
         if(user.email === MASTER_ADMIN_EMAIL) {
             const adminBtn = document.getElementById('adminBtn');
@@ -256,8 +260,9 @@ onAuthStateChanged(auth, (user) => {
         if(currentBoardId) initBoardApp(); 
         else initLobbyApp(); 
     } else {
+        document.getElementById('withdrawBtn').style.display = 'none';
         if(currentBoardId) {
-            initBoardApp(); // 게스트 입장 (아래 initBoardApp에서 이름 묻는 팝업 실행됨)
+            initBoardApp(); 
         } else {
             document.getElementById('loginView').style.display = 'flex';
             document.getElementById('lobbyView').style.display = 'none';
@@ -266,7 +271,7 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// ── 로비 렌더링 ──
+// ── 로비 앱 ──
 function initLobbyApp() {
     document.getElementById('loginView').style.display = 'none';
     document.getElementById('appView').style.display  = 'none';
@@ -280,22 +285,17 @@ function initLobbyApp() {
     };
 
     window.calculateStorage = async () => {
-        const btn = document.getElementById('calcBtn');
-        const txt = document.getElementById('storageText');
-        btn.textContent = "계산 중...";
-        btn.disabled = true;
+        const btn = document.getElementById('calcBtn'); const txt = document.getElementById('storageText');
+        btn.textContent = "계산 중..."; btn.disabled = true;
 
         try {
-            const snap = await get(ref(db, 'boards'));
-            const boards = snap.val() || {};
+            const snap = await get(ref(db, 'boards')); const boards = snap.val() || {};
             let totalBytes = 0; let fileCount = 0;
 
             Object.values(boards).forEach(board => {
                 if(board.posts) {
                     Object.values(board.posts).forEach(post => {
-                        if(post.fileData && post.fileData.url) {
-                            totalBytes += post.fileData.url.length; fileCount++;
-                        }
+                        if(post.fileData && post.fileData.url) { totalBytes += post.fileData.url.length; fileCount++; }
                     });
                 }
             });
@@ -304,35 +304,24 @@ function initLobbyApp() {
             txt.innerHTML = `첨부파일 <b style="color:var(--accent)">${fileCount}</b>개<br>추정 사용량: <b style="color:var(--accent)">${mb} MB</b> / 1024 MB`;
             btn.style.display = 'none';
             if(fileCount > 0) document.getElementById('cleanBtn').style.display = 'block';
-        } catch(e) {
-            txt.textContent = "오류가 발생했습니다.";
-        } finally {
-            btn.disabled = false; btn.textContent = "현재 첨부파일 사용량 계산하기";
-        }
+        } catch(e) { txt.textContent = "오류가 발생했습니다."; } 
+        finally { btn.disabled = false; btn.textContent = "현재 첨부파일 사용량 계산하기"; }
     };
 
     window.cleanUpFiles = async () => {
         if(!confirm("모든 보드의 첨부파일을 삭제하시겠습니까?\n(텍스트와 댓글은 유지됩니다)")) return;
         window.showToast("정리 중...");
         try {
-            const snap = await get(ref(db, 'boards'));
-            const boards = snap.val() || {};
-            const updates = {};
-            
+            const snap = await get(ref(db, 'boards')); const boards = snap.val() || {}; const updates = {};
             Object.keys(boards).forEach(boardId => {
                 if(boards[boardId].posts) {
                     Object.keys(boards[boardId].posts).forEach(postId => {
-                        if(boards[boardId].posts[postId].fileData) {
-                            updates[`boards/${boardId}/posts/${postId}/fileData`] = null; 
-                        }
+                        if(boards[boardId].posts[postId].fileData) updates[`boards/${boardId}/posts/${postId}/fileData`] = null; 
                     });
                 }
             });
-
-            if(Object.keys(updates).length > 0) {
-                await update(ref(db), updates);
-                window.showToast("정리 완료!"); window.closeModal('storageModal');
-            } else { window.showToast("삭제할 첨부파일이 없습니다."); }
+            if(Object.keys(updates).length > 0) { await update(ref(db), updates); window.showToast("정리 완료!"); window.closeModal('storageModal'); } 
+            else { window.showToast("삭제할 첨부파일이 없습니다."); }
         } catch(e) { window.showToast("오류 발생"); }
     };
 
@@ -364,9 +353,10 @@ function initLobbyApp() {
         grid.innerHTML = ''; trashGrid.innerHTML = '';
         let hasTrash = false; const now = Date.now();
         
+        // 🌟 핵심 수정: 로비 화면에서는 무조건 "내가 만든 보드"만 표시합니다. (관리자라도 섞이지 않게 분리)
         const myBoards = Object.keys(data)
             .map(k => ({ id: k, ...data[k] }))
-            .filter(b => b.ownerUid === currentUserUid || (auth.currentUser && auth.currentUser.email === MASTER_ADMIN_EMAIL))
+            .filter(b => b.ownerUid === currentUserUid)
             .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
         myBoards.forEach(b => {
@@ -491,7 +481,6 @@ function initBoardApp() {
       else if (window.currentLayout === 'canvas') window.updateCanvasSize();
   });
 
-  // 🌟 핵심: 선생님(구글로그인)은 myName이 있으므로 팝업 무시, 학생(게스트)만 팝업!
   function ensureName () {
     if (myName) return; 
     window.openModal('nameModal'); 
@@ -503,8 +492,6 @@ function initBoardApp() {
     try { localStorage.setItem('learner_name', myName); } catch(e) {}
     window.closeModal('nameModal');
   };
-  
-  // 보드 앱 시작 시 이름 확인 호출
   ensureName();
 
   update(metaRef, { updatedAt: Date.now(), deletedAt: null });
@@ -741,10 +728,7 @@ function initBoardApp() {
             const p = allPostsData[id];
             const el = localPosts[id];
             if (el.parentElement !== document.getElementById('board')) document.getElementById('board').appendChild(el);
-            el.style.position = 'absolute';
-            el.style.left = (p.x || 80) + 'px'; 
-            el.style.top = (p.y || 80) + 'px';
-            el.style.transform = '';
+            el.style.position = 'absolute'; el.style.left = (p.x || 80) + 'px'; el.style.top = (p.y || 80) + 'px'; el.style.transform = '';
         });
         return;
     }
@@ -767,13 +751,11 @@ function initBoardApp() {
     const parentContainers = Object.values(localColEls).map(c => c.querySelector('.column-body'));
     
     Object.keys(localPosts).forEach(id => {
-        const p = allPostsData[id];
-        if(!p) return;
+        const p = allPostsData[id]; if(!p) return;
         const el = localPosts[id];
         const firstCid = Object.keys(localColumnsData)[0];
         const bodyId   = `colbody-${p.columnId || firstCid}`;
         const target = document.getElementById(bodyId) || board;
-        
         if (el.parentElement !== target && (!dragState.id || dragState.id !== id)) target.appendChild(el);
     });
 
