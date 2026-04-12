@@ -46,25 +46,29 @@
 <div id="lobbyView">
   <header class="lobby-header">
     <h1 class="lobby-logo"><span>📋</span>나의 보드</h1>
-    <div style="display: flex; gap: 12px; align-items: center;">
+    <div class="header-btn-group">
         <button id="adminBtn" class="btn-new" style="background: var(--navy); color: white; border: none; display: none;" onclick="openMasterAdmin()">👑 마스터 관리자</button>
         <button class="btn-new" style="background: var(--ink-2);" onclick="openStorageManager()">💾 용량 정리</button>
         <button class="btn-new" style="background: transparent; color: var(--ink); border: 1px solid var(--border); box-shadow: none;" onclick="logout()">로그아웃</button>
     </div>
   </header>
-  <div class="lobby-hero">
-    <h2 class="lobby-hero-title">환영합니다, <span id="userDisplayName">선생님</span>!</h2>
-    <p class="lobby-hero-sub">내 구글 계정에 저장된 프라이빗 보드 목록입니다.</p>
+  
+  <div class="lobby-content-scroll">
+      <div class="lobby-hero">
+        <h2 class="lobby-hero-title">환영합니다, <span id="userDisplayName">선생님</span>!</h2>
+        <p class="lobby-hero-sub">내 구글 계정에 저장된 프라이빗 보드 목록입니다.</p>
+      </div>
+      <main class="lobby-main">
+        <p class="section-label">내 보드 목록</p>
+        <div class="board-grid" id="boardGrid"></div>
+    
+        <div id="trashSection" style="margin-top: 64px; display: none;">
+          <p class="section-label" style="color: var(--ink-3);">🗑️ 휴지통 (삭제 후 15일 뒤 완전 삭제)</p>
+          <div class="board-grid" id="trashGrid"></div>
+        </div>
+      </main>
   </div>
-  <main class="lobby-main">
-    <p class="section-label">내 보드 목록</p>
-    <div class="board-grid" id="boardGrid"></div>
-
-    <div id="trashSection" style="margin-top: 64px; display: none;">
-      <p class="section-label" style="color: var(--ink-3);">🗑️ 휴지통 (삭제 후 15일 뒤 완전 삭제)</p>
-      <div class="board-grid" id="trashGrid"></div>
-    </div>
-  </main>
+  
   <button class="lobby-fab" onclick="createBoardFromLobby()" title="새 보드 만들기">＋</button>
 </div>
 
@@ -197,28 +201,57 @@
 </div>
 
 <div class="overlay" id="shareModal" onclick="closeBgClick(event,'shareModal')">
-    <div class="modal-content" style="max-width: 480px;">
+    <div class="modal-content" style="max-width: 400px;">
         <div class="modal-header">
-            <h3 style="margin:0;">📤 이 게시판 공유</h3>
+            <h3 style="margin:0;">📤 보드 공유하기</h3>
             <button class="modal-close" onclick="closeModal('shareModal')">✕</button>
         </div>
-        <div class="share-grid">
-            <div class="share-item" onclick="copyLink()">
-                <div class="share-icon">🔗</div><span class="share-text">링크 복사</span>
-            </div>
-            <div class="share-item" onclick="showQR()">
-                <div class="share-icon">📱</div><span class="share-text">QR 코드</span>
-            </div>
-            <div class="share-item" onclick="downloadImage()">
-                <div class="share-icon">🖼️</div><span class="share-text">이미지로 저장</span>
-            </div>
-            <div class="share-item" onclick="downloadPDF()">
-                <div class="share-icon" id="pdfIconWrap">📄</div><span class="share-text" id="pdfTextWrap">PDF로 저장</span>
-            </div>
+        
+        <div class="share-list">
+            <button class="share-action-btn" onclick="copyLink()">
+                <div class="share-action-left">
+                    <div class="share-icon-wrap">🔗</div>
+                    <div class="share-label-wrap">
+                        <span class="share-label">링크 복사</span>
+                    </div>
+                </div>
+                <div class="share-action-right">›</div>
+            </button>
+            
+            <button class="share-action-btn" onclick="showQR()">
+                <div class="share-action-left">
+                    <div class="share-icon-wrap">📱</div>
+                    <div class="share-label-wrap">
+                        <span class="share-label">QR 코드 보기</span>
+                    </div>
+                </div>
+                <div class="share-action-right">›</div>
+            </button>
+            
+            <button class="share-action-btn" onclick="downloadImage()">
+                <div class="share-action-left">
+                    <div class="share-icon-wrap">🖼️</div>
+                    <div class="share-label-wrap">
+                        <span class="share-label">이미지(PNG)로 저장</span>
+                    </div>
+                </div>
+                <div class="share-action-right">›</div>
+            </button>
+            
+            <button class="share-action-btn" onclick="downloadPDF()">
+                <div class="share-action-left">
+                    <div class="share-icon-wrap" id="pdfIconWrap">📄</div>
+                    <div class="share-label-wrap">
+                        <span class="share-label" id="pdfTextWrap">PDF 문서로 저장</span>
+                    </div>
+                </div>
+                <div class="share-action-right">›</div>
+            </button>
         </div>
+
         <div id="qrContainer">
             <img id="qrImg" src="" alt="QR Code">
-            <p style="font-size:0.85rem; color:var(--ink-3); margin-top:10px;">학생들에게 위 QR코드를 스캔하게 하세요.</p>
+            <p>카메라로 QR 코드를 스캔하여 접속</p>
         </div>
     </div>
 </div>
