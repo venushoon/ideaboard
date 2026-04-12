@@ -7,12 +7,25 @@ window.applyMasonry = () => {};
 window.updateCanvasSize = () => {}; 
 window.currentLayout = 'canvas';
 
-// 🌟 어뷰징 방지: 게스트(학생)용 고유 기기 식별자 생성 및 유지
+// 🌟 어뷰징 방지: 게스트(학생)용 고유 기기 식별자
 let myDeviceId = localStorage.getItem('device_id');
 if (!myDeviceId) {
     myDeviceId = 'guest_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
     localStorage.setItem('device_id', myDeviceId);
 }
+
+// 🌟 성능 최적화: 레이아웃 디바운싱 (화면 덜덜거림 방지)
+window.debouncedLayout = (() => {
+    let timer = null;
+    return () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            if (window.currentLayout === 'wall') window.applyMasonry();
+            else if (window.currentLayout === 'column') renderPostsOrder();
+            if (window.currentLayout === 'canvas') window.updateCanvasSize();
+        }, 150); // 0.15초 동안 추가 변경이 없으면 1번만 정렬 실행
+    };
+})();
 
 /* ── 2. UI 공통 전역 함수 ── */
 window.showToast = msg => { 
@@ -49,7 +62,7 @@ window.openImageViewer = url => { document.getElementById('imageViewerImg').src 
 window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
 window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
 
-/* ── 3-1. 이미지 캡처 (용량/화질 최적화) ── */
+/* ── 3-1. 이미지 캡처 (용량 최적화 유지) ── */
 window.downloadImage = async () => {
     window.showToast("고화질 이미지 생성 중...");
     try {
@@ -81,7 +94,7 @@ window.downloadImage = async () => {
     } catch(e) { window.showToast("이미지 저장 실패"); }
 };
 
-/* ── 3-2. 스마트 PDF 엔진 (픽스 유지) ── */
+/* ── 3-2. 스마트 PDF 엔진 (다페이지 핀터레스트 픽스 유지) ── */
 window.downloadPDF = async () => {
     const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
     const origText = tWrap.textContent; tWrap.textContent = '문서 최적화 중…'; iWrap.textContent = '⏳';
@@ -229,12 +242,12 @@ window.getYoutubeId = function(url) {
     return (match && match[1]) ? match[1] : null;
 };
 
-
 // ─────────────────────────────────────────────
-// 5. Firebase 연동 및 하이브리드 로그인/마스터 관리 로직
+// 5. Firebase 연동 (🌟 onChild 최적화 적용)
 // ─────────────────────────────────────────────
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getDatabase, ref, onValue, set, update, push, remove, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+// 🔥 성능 개선을 위해 onChildAdded, onChildChanged, onChildRemoved 모듈을 가져옵니다!
+import { getDatabase, ref, onValue, set, update, push, remove, get, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 /* 🔥 주의: 선생님의 Firebase 설정값으로 변경해주세요! */
@@ -256,7 +269,6 @@ let currentUserUid = null;
 const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; 
 
 let myName = '';
-// 🌟 구버전 호환성을 위해 로컬스토리지 유지
 let likedPosts = {};
 try {
     myName = localStorage.getItem('learner_name') || '';
@@ -604,10 +616,7 @@ function initBoardApp() {
       spacer.style.display = 'block'; spacer.style.left = maxX + 'px'; spacer.style.top = maxY + 'px';
   };
 
-  window.addEventListener('resize', () => {
-      if (window.currentLayout === 'wall') window.applyMasonry();
-      else if (window.currentLayout === 'canvas') window.updateCanvasSize();
-  });
+  window.addEventListener('resize', () => window.debouncedLayout());
 
   function ensureName () {
     if (myName) return; 
@@ -677,25 +686,54 @@ function initBoardApp() {
     document.querySelectorAll('.post-it').forEach(el => { el.draggable = (window.currentLayout !== 'canvas'); });
     updateAllReactionsIcon();
 
-    if(layoutChanged) { renderColumns(); renderPostsOrder(); window.updateCanvasSize(); }
+    if(layoutChanged) { renderColumns(); renderPostsOrder(); window.debouncedLayout(); }
   });
 
   onValue(columnsRef, snap => {
-    localColumnsData = snap.val() || {}; renderColumns(); renderPostsOrder();
+    localColumnsData = snap.val() || {}; renderColumns(); renderPostsOrder(); window.debouncedLayout();
   });
 
-  onValue(boardRef, snap => {
-    allPostsData = snap.val() || {};
-    Object.keys(localPosts).forEach(id => { if (!allPostsData[id]) { localPosts[id].remove(); delete localPosts[id]; } });
-
-    Object.keys(allPostsData).forEach(id => {
-      const p = allPostsData[id]; let el = localPosts[id];
-      if (!el) { el = createPostEl(id, p); localPosts[id] = el; placePost(el, p.columnId); }
+  // 🌟 성능 향상: 전체 새로고침(onValue)을 부분 구독(onChild)으로 교체!
+  onChildAdded(boardRef, snap => {
+      const id = snap.key;
+      const p = snap.val();
+      allPostsData[id] = p;
+      let el = localPosts[id];
+      if (!el) { 
+          el = createPostEl(id, p); 
+          localPosts[id] = el; 
+          placePost(el, p.columnId); 
+      }
       updatePostEl(el, id, p);
-    });
-    
-    renderPostsOrder();
-    if(window.currentLayout === 'canvas') window.updateCanvasSize();
+      window.debouncedLayout();
+  });
+
+  onChildChanged(boardRef, snap => {
+      const id = snap.key;
+      const p = snap.val();
+      allPostsData[id] = p;
+      const el = localPosts[id];
+      if (el) {
+          updatePostEl(el, id, p);
+          // 컬럼 레이아웃에서 다른 단으로 이동했을 경우
+          if (window.currentLayout === 'column') {
+              const targetBodyId = `colbody-${p.columnId || Object.keys(localColumnsData)[0]}`;
+              if (el.parentElement && el.parentElement.id !== targetBodyId) {
+                  placePost(el, p.columnId);
+              }
+          }
+      }
+      window.debouncedLayout();
+  });
+
+  onChildRemoved(boardRef, snap => {
+      const id = snap.key;
+      delete allPostsData[id];
+      if (localPosts[id]) {
+          localPosts[id].remove();
+          delete localPosts[id];
+      }
+      window.debouncedLayout();
   });
 
   function getReactionIcon(type) { return type === 'thumb' ? '👍' : type === 'star' ? '⭐' : '❤️'; }
@@ -766,7 +804,8 @@ function initBoardApp() {
     el.style.backgroundColor = p.color || '#ffffff';
     let html = '';
     if(p.fileData) {
-        if(p.fileData.isImage) html += `<img src="${p.fileData.url}" class="post-img" alt="첨부이미지" onload="if(window.applyMasonry) window.applyMasonry(); window.updateCanvasSize();" onclick="window.openImageViewer('${p.fileData.url}')">`;
+        // 🌟 성능 최적화: 이미지가 로드된 후 디바운스 레이아웃 호출 (덜덜거림 방지)
+        if(p.fileData.isImage) html += `<img src="${p.fileData.url}" class="post-img" alt="첨부이미지" onload="window.debouncedLayout && window.debouncedLayout()" onclick="window.openImageViewer('${p.fileData.url}')">`;
         else html += `<a href="${p.fileData.url}" download="${p.fileData.name}" class="post-file">📁 ${p.fileData.name}</a>`;
     }
     
@@ -782,7 +821,7 @@ function initBoardApp() {
     html += `<div class="post-text">${window.escapeHtml(p.content || '')}</div>`;
     el.querySelector('.post-body-content').innerHTML = html;
 
-    // 🌟 서버 기반 좋아요 검증 로직으로 UI 업데이트
+    // 좋아요 UI 업데이트 (레거시 지원 포함)
     let likeCount = 0;
     let hasLiked = false;
     const uid = currentUserUid || myDeviceId;
@@ -792,7 +831,6 @@ function initBoardApp() {
             likeCount = Object.keys(p.likes).length;
             hasLiked = !!p.likes[uid];
         } else {
-            // 구버전(숫자) 데이터 호환성 유지
             likeCount = Number(p.likes);
             hasLiked = !!likedPosts[id]; 
         }
@@ -887,7 +925,6 @@ function initBoardApp() {
             return order === 'top' ? tb - ta : ta - tb;
         });
         posts.forEach(p => { if(!dragState.id || dragState.id !== p.id) board.appendChild(p); }); 
-        setTimeout(window.applyMasonry, 50); 
         return; 
     }
 
@@ -1008,13 +1045,12 @@ function initBoardApp() {
 
   window.deletePost = id => { if (confirm('이 포스트잇을 삭제할까요?')) remove(ref(db, `boards/${currentBoardId}/posts/${id}`)); };
   
-  // 🌟 좋아요 (서버 검증 방식 및 레거시 데이터 호환 처리 완료)
+  // 🌟 어뷰징 방지 좋아요 로직
   window.toggleLike = async id => {
     const p = allPostsData[id];
     if (!p) return;
     const uid = currentUserUid || myDeviceId;
     
-    // 옛날에 만들어진 포스트잇(숫자로 기록된 경우) 호환성 처리
     if (typeof p.likes === 'number') {
         if (likedPosts[id]) { window.showToast('이미 반응을 남겼어요!'); return; }
         await update(ref(db, `boards/${currentBoardId}/posts/${id}`), { likes: p.likes + 1 });
@@ -1022,7 +1058,6 @@ function initBoardApp() {
         try { localStorage.setItem('liked_posts', JSON.stringify(likedPosts)); } catch(e){}
         animateLikeBtn(id);
     } else {
-        // 완벽한 어뷰징 방지 처리 (DB에 기록)
         const likeRef = ref(db, `boards/${currentBoardId}/posts/${id}/likes/${uid}`);
         try {
             const snap = await get(likeRef);
@@ -1070,20 +1105,18 @@ function initBoardApp() {
   };
 
   const dragState = { id: null, offsetX: 0, offsetY: 0, el: null, pointerId: null };
-  let autoScrollRAF = null;
   const ptrPos = { x: 0, y: 0 }; 
 
   function updateDragElementPosition() {
       if (!dragState.el) return;
       const boardEl = document.getElementById('board');
-      const boardRect = boardEl.getBoundingClientRect(); 
       
-      const x = ptrPos.x - dragState.offsetX - boardRect.left + boardEl.scrollLeft;
-      const y = ptrPos.y - dragState.offsetY - boardRect.top + boardEl.scrollTop;
+      const x = ptrPos.x - dragState.offsetX - boardEl.getBoundingClientRect().left + boardEl.scrollLeft;
+      const y = ptrPos.y - dragState.offsetY - boardEl.getBoundingClientRect().top + boardEl.scrollTop;
       
       dragState.el.style.left = x + 'px';
       dragState.el.style.top  = y + 'px';
-      window.updateCanvasSize(); 
+      window.debouncedLayout(); 
   }
 
   function autoScrollLoop() {
@@ -1106,12 +1139,11 @@ function initBoardApp() {
           updateDragElementPosition();
       }
       
-      autoScrollRAF = requestAnimationFrame(autoScrollLoop);
+      requestAnimationFrame(autoScrollLoop);
   }
 
   function startFreeDrag (e, id, el) {
     if (window.currentLayout !== 'canvas') return; 
-    // 🔴 FIX: 정확한 클래스명 타겟팅으로 드래그 충돌 원천 차단
     if (e.target.closest('.del, .edit, .like-btn, .comment-input, .post-link, .post-img, .post-file, .yt-thumb-wrap, a, button')) return;
 
     dragState.id = id; 
@@ -1135,7 +1167,7 @@ function initBoardApp() {
     document.addEventListener('pointerup', onUp, { once: true });
     document.addEventListener('pointercancel', onUp, { once: true });
 
-    autoScrollRAF = requestAnimationFrame(autoScrollLoop);
+    requestAnimationFrame(autoScrollLoop);
   }
   
   function onMove (e) {
@@ -1149,8 +1181,6 @@ function initBoardApp() {
     if (!dragState.id) return;
     const el = dragState.el;
     
-    cancelAnimationFrame(autoScrollRAF);
-
     const finalX = parseFloat(el.style.left) || 80;
     const finalY = parseFloat(el.style.top) || 80;
     update(ref(db, `boards/${currentBoardId}/posts/${dragState.id}`), { x: finalX, y: finalY });
