@@ -7,6 +7,7 @@ window.applyMasonry = () => {};
 window.updateCanvasSize = () => {}; 
 window.currentLayout = 'canvas';
 
+/* ── 2. UI 공통 전역 함수 ── */
 window.showToast = msg => { 
     const t = document.getElementById('toast'); 
     if(!t) return;
@@ -41,28 +42,162 @@ window.openImageViewer = url => { document.getElementById('imageViewerImg').src 
 window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
 window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
 
+/* ── 3-1. 이미지 캡처 (단일 조감도 - 기존 기능 유지) ── */
 window.downloadImage = async () => {
     window.showToast("이미지 저장 중...");
     try {
         if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 일부 외부 이미지가 캡처되지 않을 수 있습니다.");
-        const canvas = await html2canvas(document.getElementById('board'), { scale: 2, useCORS: true, backgroundColor: document.body.style.backgroundColor || '#f9fafb' });
+        
+        const boardEl = document.getElementById('board');
+        const origWidth = boardEl.style.minWidth;
+        const origHeight = boardEl.style.minHeight;
+        
+        // 캔버스 모드일 경우 숨겨진 스크롤 영역까지 캡처하기 위해 크기 임시 강제 확장
+        if(window.currentLayout === 'canvas') {
+            boardEl.style.minWidth = boardEl.scrollWidth + 'px';
+            boardEl.style.minHeight = boardEl.scrollHeight + 'px';
+        }
+
+        const canvas = await html2canvas(boardEl, { 
+            scale: 2, 
+            useCORS: true, 
+            backgroundColor: document.body.style.backgroundColor || '#f9fafb',
+            windowWidth: boardEl.scrollWidth,
+            windowHeight: boardEl.scrollHeight
+        });
+        
+        if(window.currentLayout === 'canvas') {
+            boardEl.style.minWidth = origWidth;
+            boardEl.style.minHeight = origHeight;
+        }
+
         const link = document.createElement('a'); link.download = `아이디어보드_${Date.now()}.png`; link.href = canvas.toDataURL('image/png'); link.click(); window.closeModal('shareModal');
     } catch(e) { window.showToast("캡처 실패 (서버 환경 필요)"); }
 };
 
+/* ── 🌟 3-2. 스마트 PDF 내보내기 (다페이지 Pagination Algorithm) ── */
 window.downloadPDF = async () => {
-  const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
-  const origText = tWrap.textContent; tWrap.textContent = '생성 중…'; iWrap.textContent = '⏳';
-  try {
-    if (window.location.protocol === 'file:') window.showToast("로컬 환경에서는 일부 외부 이미지가 PDF에 안 나올 수 있습니다.");
-    const canvas = await html2canvas(document.getElementById('board'), { scale: 2, useCORS: true, backgroundColor: document.body.style.backgroundColor || '#f9fafb' });
-    const pdf = new jspdf.jsPDF('l', 'mm', 'a4');
-    const w = pdf.internal.pageSize.getWidth(); const h = (canvas.height * w) / canvas.width;
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
-    pdf.save(`아이디어보드_${Date.now()}.pdf`); window.showToast('PDF 저장 완료!'); window.closeModal('shareModal');
-  } catch(e) { window.showToast('PDF 생성 실패'); } finally { tWrap.textContent = origText; iWrap.textContent = '📄'; }
+    const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
+    const origText = tWrap.textContent; tWrap.textContent = '문서 생성 중…'; iWrap.textContent = '⏳';
+    
+    try {
+        window.showToast("PDF 문서를 구성하고 있습니다...");
+        const boardTitle = document.getElementById('boardTitleText').textContent;
+        const posts = Array.from(document.querySelectorAll('.post-it'));
+        
+        if(posts.length === 0) {
+            window.showToast("내보낼 게시물이 없습니다."); return;
+        }
+
+        // 1. 가상 렌더링을 위한 컨테이너 생성 (화면 밖 숨김 처리)
+        const pdfContainer = document.createElement('div');
+        pdfContainer.style.position = 'absolute';
+        pdfContainer.style.top = '-9999px';
+        pdfContainer.style.left = '-9999px';
+        pdfContainer.style.width = '1122px'; // A4 가로 픽셀 사이즈 (약 297mm)
+        pdfContainer.style.backgroundColor = document.body.style.backgroundColor || '#f9fafb';
+        pdfContainer.style.padding = '40px';
+        pdfContainer.style.fontFamily = document.body.style.fontFamily;
+        document.body.appendChild(pdfContainer);
+
+        // A4 1장의 대략적인 최대 높이 한계선 (여백 포함)
+        const PAGE_HEIGHT_LIMIT = 750; 
+        
+        let currentPage = createPdfPage(boardTitle, 1);
+        pdfContainer.appendChild(currentPage);
+        
+        let currentGrid = currentPage.querySelector('.pdf-grid');
+        let pageCount = 1;
+
+        // 2. 포스트잇 데이터를 가상 A4 용지에 차곡차곡 삽입
+        for (let i = 0; i < posts.length; i++) {
+            const originalPost = posts[i];
+            
+            // 데이터 복제 및 UI 정제 (버튼 등 불필요한 요소 제거)
+            const postClone = originalPost.cloneNode(true);
+            postClone.style.position = 'relative';
+            postClone.style.left = 'auto';
+            postClone.style.top = 'auto';
+            postClone.style.transform = 'none';
+            postClone.style.width = '100%';
+            postClone.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+            postClone.style.marginBottom = '20px';
+            
+            // 편집/삭제 버튼, 댓글 입력창 등 제거
+            const btns = postClone.querySelector('.post-btns'); if(btns) btns.remove();
+            const cInput = postClone.querySelector('.comment-input'); if(cInput) cInput.remove();
+            
+            // 일단 현재 페이지의 그리드에 붙여봄
+            currentGrid.appendChild(postClone);
+            
+            // 🌟 핵심: 방금 붙인 포스트잇 때문에 용지 높이를 초과했는지 검사
+            if (currentPage.offsetHeight > PAGE_HEIGHT_LIMIT) {
+                // 초과했다면 방금 붙인 걸 다시 떼어냄
+                currentGrid.removeChild(postClone);
+                
+                // 새 A4 용지(페이지) 생성
+                pageCount++;
+                currentPage = createPdfPage(boardTitle, pageCount);
+                pdfContainer.appendChild(currentPage);
+                currentGrid = currentPage.querySelector('.pdf-grid');
+                
+                // 새 페이지의 그리드에 다시 붙임
+                currentGrid.appendChild(postClone);
+            }
+        }
+
+        // 3. 생성된 가상 페이지들을 캡처하여 PDF로 병합
+        const pdf = new jspdf.jsPDF('l', 'mm', 'a4');
+        const pages = pdfContainer.querySelectorAll('.pdf-page');
+        
+        for (let i = 0; i < pages.length; i++) {
+            const canvas = await html2canvas(pages[i], { scale: 2, useCORS: true });
+            const imgData = canvas.toDataURL('image/png');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            
+            if (i > 0) pdf.addPage(); // 2페이지부터는 새 장 추가
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        }
+
+        pdf.save(`아이디어보드_${boardTitle}_${Date.now()}.pdf`);
+        window.showToast('스마트 PDF 저장 완료!');
+        window.closeModal('shareModal');
+
+        // 청소
+        document.body.removeChild(pdfContainer);
+
+    } catch(e) { 
+        console.error(e);
+        window.showToast('PDF 생성 중 오류가 발생했습니다.'); 
+    } finally { 
+        tWrap.textContent = origText; iWrap.textContent = '📄'; 
+    }
 };
 
+// 가상 PDF 페이지(A4 사이즈) 생성 헬퍼 함수
+function createPdfPage(boardTitle, pageNum) {
+    const page = document.createElement('div');
+    page.className = 'pdf-page';
+    page.style.width = '1042px'; // 좌우 여백 제외한 실 너비
+    page.style.minHeight = '714px'; // A4 가로 높이
+    page.style.backgroundColor = 'transparent';
+    page.style.pageBreakAfter = 'always';
+    
+    page.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid var(--ink); padding-bottom: 10px; margin-bottom: 24px;">
+            <h2 style="margin: 0; font-size: 1.8rem; font-weight: 900; color: var(--ink);">${boardTitle}</h2>
+            <div style="text-align: right; color: var(--ink-3);">
+                <span style="font-size: 0.9rem; font-weight: bold;">Page ${pageNum}</span><br>
+                <span style="font-size: 0.8rem;">출력일시: ${new Date().toLocaleString('ko-KR')}</span>
+            </div>
+        </div>
+        <div class="pdf-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; align-items: start;"></div>
+    `;
+    return page;
+}
+
+/* ── 4. 파일 업로드 ── */
 window.currentFileData = null; 
 window.handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -150,6 +285,7 @@ try {
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
+// 🌟 로그인 및 회원가입 관련
 window.signInWithGoogle = () => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -194,7 +330,6 @@ window.enterWithCode = async () => {
     } catch (e) { window.showToast("오류가 발생했습니다. 다시 시도해주세요."); }
 };
 
-// 🌟 마스터 대시보드 렌더링 함수 (보드 이름 클릭 시 링크 이동 추가)
 window.openMasterAdmin = async () => {
     window.openModal('adminModal');
     const listEl = document.getElementById('adminBoardList');
@@ -214,7 +349,6 @@ window.openMasterAdmin = async () => {
             const owner = b.ownerUid ? (b.ownerUid.substring(0, 8) + '...') : '알 수 없음';
             const isDeleted = b.deletedAt ? '<span style="color:red; font-size:0.8rem;">(휴지통)</span>' : '';
             
-            // 🌟 <a> 태그를 사용해 보드로 직접 이동하는 기능 추가 (클릭 시 팝업 닫힘 및 리로드)
             html += `
                 <tr>
                     <td><a href="#board=${b.id}" class="admin-board-link" onclick="window.closeModal('adminModal'); setTimeout(()=>window.location.reload(), 50);"><strong>${title}</strong></a> ${isDeleted}</td>
