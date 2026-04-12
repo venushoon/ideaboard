@@ -5,23 +5,22 @@ window.getInitials = name => (name || '?').charAt(0).toUpperCase();
 window.escapeHtml  = str => str ? String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '';
 window.applyMasonry = () => {}; 
 window.updateCanvasSize = () => {}; 
-window.renderPostsOrder = () => {}; // 🔴 FIX: ReferenceError 방지를 위한 전역 초기화
+window.renderPostsOrder = () => {}; 
 window.currentLayout = 'canvas';
 
-// 🌟 어뷰징 방지: 게스트(학생)용 고유 기기 식별자
+// 게스트 고유 식별자
 let myDeviceId = localStorage.getItem('device_id');
 if (!myDeviceId) {
     myDeviceId = 'guest_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
     localStorage.setItem('device_id', myDeviceId);
 }
 
-// 🌟 성능 최적화: 레이아웃 디바운싱 (스코프 에러 완벽 해결)
+// 🌟 디바운싱: 화면 스크롤, 크기 조절 시 버벅임 방지
 window.debouncedLayout = (() => {
     let timer = null;
     return () => {
         clearTimeout(timer);
         timer = setTimeout(() => {
-            // 🔴 FIX: window.renderPostsOrder 호출로 스코프 에러 원천 차단
             if (window.currentLayout === 'wall' || window.currentLayout === 'column') {
                 if (typeof window.renderPostsOrder === 'function') window.renderPostsOrder();
             }
@@ -31,7 +30,47 @@ window.debouncedLayout = (() => {
     };
 })();
 
-/* ── 2. UI 공통 전역 함수 ── */
+/* ── 🌟 2. 커스텀 다이얼로그 (Native Alert/Confirm 완벽 대체) ── */
+window.customDialog = (type, title, message, icon = '💡', defaultValue = '') => {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('customDialog');
+        const titleEl = document.getElementById('cdTitle');
+        const msgEl = document.getElementById('cdMessage');
+        const iconEl = document.getElementById('cdIcon');
+        const inputEl = document.getElementById('cdInput');
+        const cancelBtn = document.getElementById('cdCancelBtn');
+        const confirmBtn = document.getElementById('cdConfirmBtn');
+
+        titleEl.innerHTML = title;
+        msgEl.innerHTML = message;
+        iconEl.innerHTML = icon;
+
+        inputEl.value = defaultValue;
+        inputEl.style.display = type === 'prompt' ? 'block' : 'none';
+        cancelBtn.style.display = type === 'alert' ? 'none' : 'block';
+
+        overlay.style.display = 'flex';
+        setTimeout(() => overlay.classList.add('active'), 10);
+
+        if (type === 'prompt') setTimeout(() => inputEl.focus(), 100);
+
+        const cleanup = () => {
+            overlay.classList.remove('active');
+            setTimeout(() => overlay.style.display = 'none', 200);
+            cancelBtn.onclick = null;
+            confirmBtn.onclick = null;
+        };
+
+        cancelBtn.onclick = () => { cleanup(); resolve(null); };
+        confirmBtn.onclick = () => {
+            cleanup();
+            if (type === 'prompt') resolve(inputEl.value);
+            else resolve(true); 
+        };
+    });
+};
+
+/* ── 3. UI 공통 전역 함수 ── */
 window.showToast = msg => { 
     const t = document.getElementById('toast'); 
     if(!t) return;
@@ -66,7 +105,7 @@ window.openImageViewer = url => { document.getElementById('imageViewerImg').src 
 window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
 window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
 
-/* ── 3-1. 이미지 캡처 (용량/화질 최적화) ── */
+/* ── 4-1. 이미지 캡처 ── */
 window.downloadImage = async () => {
     window.showToast("고화질 이미지 생성 중...");
     try {
@@ -98,7 +137,7 @@ window.downloadImage = async () => {
     } catch(e) { window.showToast("이미지 저장 실패"); }
 };
 
-/* ── 🌟 3-2. 스마트 PDF 엔진 ── */
+/* ── 4-2. 스마트 PDF 엔진 ── */
 window.downloadPDF = async () => {
     const tWrap = document.getElementById('pdfTextWrap'); const iWrap = document.getElementById('pdfIconWrap');
     const origText = tWrap.textContent; tWrap.textContent = '문서 최적화 중…'; iWrap.textContent = '⏳';
@@ -108,7 +147,10 @@ window.downloadPDF = async () => {
         window.showToast("보고서를 구성하고 있습니다...");
         const boardTitle = document.getElementById('boardTitleText').textContent;
         const posts = Array.from(document.querySelectorAll('.post-it'));
-        if(posts.length === 0) { window.showToast("내보낼 내용이 없습니다."); return; }
+        if(posts.length === 0) { 
+            await window.customDialog('alert', '알림', '내보낼 내용이 없습니다.', '⚠️'); 
+            return; 
+        }
 
         pdfContainer = document.createElement('div');
         pdfContainer.style.cssText = 'position:absolute; top:0; left:0; z-index:-100; opacity:0; pointer-events:none; width:800px; padding:40px; background:white;';
@@ -194,12 +236,15 @@ function createPdfVerticalPage(title, num) {
     return page;
 }
 
-/* ── 4. 파일 업로드 ── */
+/* ── 5. 파일 업로드 ── */
 window.currentFileData = null; 
-window.handleFileUpload = (event) => {
+window.handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if(!file) return;
-    if(file.size > 2 * 1024 * 1024) { alert("용량 제한: 2MB 이하만 업로드 가능합니다."); return; }
+    if(file.size > 2 * 1024 * 1024) { 
+        await window.customDialog('alert', '용량 초과', '용량 제한: 2MB 이하만 업로드 가능합니다.', '⚠️'); 
+        return; 
+    }
     
     document.getElementById('fileNameDisplay').textContent = file.name;
     const isImage = file.type.startsWith('image/');
@@ -246,9 +291,8 @@ window.getYoutubeId = function(url) {
     return (match && match[1]) ? match[1] : null;
 };
 
-
 // ─────────────────────────────────────────────
-// 5. Firebase 연동 및 하이브리드 로그인/마스터 관리 로직
+// 6. Firebase 연동 및 하이브리드 로그인/마스터 관리 로직
 // ─────────────────────────────────────────────
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, push, remove, get, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
@@ -285,7 +329,10 @@ let currentBoardId = hashParams.get('board') || new URLSearchParams(window.locat
 window.signInWithGoogle = () => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    signInWithPopup(auth, provider).catch(error => { console.error(error); window.showToast("로그인 실패: " + error.message); });
+    signInWithPopup(auth, provider).catch(async error => { 
+        console.error(error); 
+        await window.customDialog('alert', '로그인 실패', error.message, '🚨'); 
+    });
 };
 
 window.logout = () => {
@@ -294,7 +341,9 @@ window.logout = () => {
 
 window.withdrawAccount = async () => {
     if(!currentUserUid) return;
-    if(!confirm("정말 탈퇴하시겠습니까?\n선생님이 생성하신 '모든 보드와 데이터'가 서버에서 영구적으로 파기되며 복구할 수 없습니다.")) return;
+    
+    const isConfirm = await window.customDialog('confirm', '서비스 탈퇴', '정말 탈퇴하시겠습니까?<br>선생님이 생성하신 모든 보드와 데이터가 영구적으로 파기됩니다.', '🚨');
+    if(!isConfirm) return;
 
     window.showToast("데이터를 파기하는 중...");
     try {
@@ -318,11 +367,11 @@ window.withdrawAccount = async () => {
 
 window.enterWithCode = async () => {
     const code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
-    if(code.length < 4) { window.showToast("코드를 정확히 입력하세요."); return; }
+    if(code.length < 4) { await window.customDialog('alert', '알림', '참여 코드를 정확히 입력하세요.', '⚠️'); return; }
     try {
         const snap = await get(ref(db, `room_codes/${code}`));
         if(snap.exists()) { window.location.hash = `board=${snap.val()}`; window.location.reload(); } 
-        else { window.showToast("존재하지 않는 코드입니다."); }
+        else { await window.customDialog('alert', '알림', '존재하지 않는 코드입니다.', '❌'); }
     } catch (e) { window.showToast("오류가 발생했습니다. 다시 시도해주세요."); }
 };
 
@@ -359,7 +408,8 @@ window.openMasterAdmin = async () => {
 };
 
 window.forceDeleteBoard = async (boardId, roomCode) => {
-    if(confirm('이 보드를 서버에서 영구적으로 삭제하시겠습니까?\n이 작업은 절대 복구할 수 없습니다.')) {
+    const isConfirm = await window.customDialog('confirm', '영구 삭제', '이 보드를 서버에서 영구적으로 삭제하시겠습니까?<br>이 작업은 절대 복구할 수 없습니다.', '🚨');
+    if(isConfirm) {
         try {
             await remove(ref(db, `boards/${boardId}`));
             await remove(ref(db, `board_meta/${boardId}`));
@@ -435,7 +485,8 @@ function initLobbyApp() {
     };
 
     window.cleanUpFiles = async () => {
-        if(!confirm("모든 보드의 첨부파일을 삭제하시겠습니까?\n(텍스트와 댓글은 유지됩니다)")) return;
+        const isConfirm = await window.customDialog('confirm', '용량 정리', '모든 보드의 첨부파일을 삭제하시겠습니까?<br>(텍스트와 댓글은 안전하게 유지됩니다)', '🧹');
+        if(!isConfirm) return;
         window.showToast("정리 중...");
         try {
             const snap = await get(ref(db, 'boards')); const boards = snap.val() || {}; const updates = {};
@@ -447,25 +498,27 @@ function initLobbyApp() {
                 }
             });
             if(Object.keys(updates).length > 0) { await update(ref(db), updates); window.showToast("정리 완료!"); window.closeModal('storageModal'); } 
-            else { window.showToast("삭제할 첨부파일이 없습니다."); }
+            else { await window.customDialog('alert', '알림', '삭제할 첨부파일이 없습니다.', '✅'); }
         } catch(e) { window.showToast("오류 발생"); }
     };
 
-    window.deleteBoard = (boardId, e) => {
+    window.deleteBoard = async (boardId, e) => {
         e.stopPropagation();
-        if (confirm('이 보드를 휴지통으로 이동할까요? (15일 후 영구 삭제)')) {
+        const isConfirm = await window.customDialog('confirm', '휴지통 이동', '이 보드를 휴지통으로 이동할까요?<br><span style="font-size:0.85rem;color:#888;">(15일 후 완전히 삭제됩니다)</span>', '🗑️');
+        if (isConfirm) {
             update(ref(db, `board_meta/${boardId}`), { deletedAt: Date.now() }); window.showToast('휴지통으로 이동됨');
         }
     };
 
-    window.restoreBoard = (boardId, e) => {
+    window.restoreBoard = async (boardId, e) => {
         e.stopPropagation();
         update(ref(db, `board_meta/${boardId}`), { deletedAt: null }); window.showToast('복구됨');
     };
 
     window.hardDeleteBoard = async (boardId, e) => {
         e.stopPropagation();
-        if (confirm('영구 삭제하시겠습니까?')) {
+        const isConfirm = await window.customDialog('confirm', '영구 삭제', '영구 삭제하시겠습니까?<br>이 작업은 되돌릴 수 없습니다.', '🚨');
+        if (isConfirm) {
             try {
                 const metaSnap = await get(ref(db, `board_meta/${boardId}`));
                 const roomCode = metaSnap.val()?.roomCode;
@@ -524,8 +577,8 @@ function initLobbyApp() {
     });
 
     window.createBoardFromLobby = async () => {
-        const name = prompt('새 보드 이름:');
-        if (name?.trim()) { 
+        const name = await window.customDialog('prompt', '새 보드 생성', '새 보드의 이름을 지정해 주세요.', '✨');
+        if (name && name.trim()) { 
             const newBoardId = push(ref(db, 'boards')).key; 
             
             let roomCode;
@@ -536,7 +589,6 @@ function initLobbyApp() {
                 if(!snap.exists()) isUnique = true;
             }
             
-            // 🔴 FIX: 방 생성 시 로비 메타와 내부 설정에 이름을 완벽하게 싱크
             await set(ref(db, `board_meta/${newBoardId}`), {
                 title: name.trim(), ownerUid: currentUserUid, roomCode: roomCode, updatedAt: Date.now()
             });
@@ -571,7 +623,6 @@ function initBoardApp() {
   let localPosts     = {};     
   let localColEls    = {};     
 
-  // 🔴 FIX: 스코프 에러를 막기 위해 함수들을 전역(window) 객체에 할당
   window.applyMasonry = () => {
       if (window.currentLayout !== 'wall') return;
       const board = document.getElementById('board');
@@ -642,7 +693,6 @@ function initBoardApp() {
 
   update(metaRef, { updatedAt: Date.now(), deletedAt: null });
 
-  // 🔴 FIX: 방 제목이 ID로 덮어씌워지지 않도록 메타데이터 우선 조회 로직 적용
   let currentBoardMeta = {};
   get(metaRef).then(metaSnap => {
       currentBoardMeta = metaSnap.val() || {};
@@ -780,7 +830,11 @@ function initBoardApp() {
         <input class="comment-input" type="text" placeholder="댓글 달기…">
       </div>`;
 
-    el.querySelector('.del').onclick  = e => { e.stopPropagation(); window.deletePost(id); };
+    el.querySelector('.del').onclick = async e => { 
+        e.stopPropagation(); 
+        const isConfirm = await window.customDialog('confirm', '포스트잇 삭제', '이 포스트잇을 삭제할까요?', '🗑️');
+        if(isConfirm) remove(ref(db, `boards/${currentBoardId}/posts/${id}`)); 
+    };
     el.querySelector('.edit').onclick = e => { e.stopPropagation(); window.editPost(id); };
     el.querySelector('.like-btn').onclick = e => { e.stopPropagation(); window.toggleLike(id); };
     
@@ -910,7 +964,6 @@ function initBoardApp() {
     Object.keys(localColEls).forEach(cid => { if (!localColumnsData[cid]) { localColEls[cid].remove(); delete localColEls[cid]; } });
   }
 
-  // 🔴 FIX: ReferenceError 방지를 위해 전역(window) 함수로 선언
   window.renderPostsOrder = function() {
     if(window.currentLayout === 'canvas') {
         Object.keys(localPosts).forEach(id => {
@@ -992,8 +1045,15 @@ function initBoardApp() {
   }
 
   /* ── CRUD ── */
-  window.openWriteModal = (colId = null) => {
-    if (!myName) { window.openModal('nameModal'); return; }
+  window.openWriteModal = async (colId = null) => {
+    if (!myName) { 
+        myName = await window.customDialog('prompt', '반가워요!', '보드에서 사용할 이름을 입력해 주세요.', '👋');
+        if(myName && myName.trim()) {
+            try { localStorage.setItem('learner_name', myName); } catch(e) {}
+        } else {
+            myName = ''; return; // 취소시 중단
+        }
+    }
     currentColId  = colId; currentEditId = null; window.removeFile();
     document.getElementById('postInput').value    = '';
     document.getElementById('linkUrlInput').value = '';
@@ -1025,8 +1085,15 @@ function initBoardApp() {
     window.openModal('writeModal');
   };
 
-  window.submitPost = () => {
-    if (!myName) { window.closeModal('writeModal'); window.openModal('nameModal'); return; }
+  window.submitPost = async () => {
+    if (!myName) { 
+        myName = await window.customDialog('prompt', '반가워요!', '보드에서 사용할 이름을 입력해 주세요.', '👋');
+        if(myName && myName.trim()) {
+            try { localStorage.setItem('learner_name', myName); } catch(e) {}
+        } else {
+            myName = ''; return;
+        }
+    }
     const content  = document.getElementById('postInput').value.trim();
     const linkUrl  = document.getElementById('linkUrlInput').value.trim();
     const fileData = window.currentFileData;
@@ -1051,7 +1118,10 @@ function initBoardApp() {
     window.closeModal('writeModal');
   };
 
-  window.deletePost = id => { if (confirm('이 포스트잇을 삭제할까요?')) remove(ref(db, `boards/${currentBoardId}/posts/${id}`)); };
+  window.deletePost = async id => { 
+      const isConfirm = await window.customDialog('confirm', '포스트잇 삭제', '이 포스트잇을 삭제할까요?', '🗑️');
+      if(isConfirm) remove(ref(db, `boards/${currentBoardId}/posts/${id}`)); 
+  };
   
   window.toggleLike = async id => {
     const p = allPostsData[id];
@@ -1091,10 +1161,19 @@ function initBoardApp() {
   
   window.addComment = (id, text, inputEl) => { push(ref(db, `boards/${currentBoardId}/posts/${id}/comments`), { author: myName, text, timestamp: Date.now() }); };
 
-  window.addColumn = () => { const t = prompt('새 섹션 이름:'); if (t?.trim()) push(columnsRef, { title: t.trim(), order: Date.now() }); };
+  window.addColumn = async () => { 
+      const t = await window.customDialog('prompt', '섹션 추가', '새 섹션의 이름을 입력하세요.', '🏛️');
+      if (t && t.trim()) push(columnsRef, { title: t.trim(), order: Date.now() }); 
+  };
   window.renameColumn = (cid, v) => update(ref(db, `boards/${currentBoardId}/columns/${cid}`), { title: v });
-  window.deleteColumn = cid => { if (confirm('이 섹션을 삭제할까요? (안에 있는 게시물은 지워지지 않습니다)')) remove(ref(db, `boards/${currentBoardId}/columns/${cid}`)); };
-  window.clearBoard = () => { if (confirm('모든 게시물을 삭제합니다. 계속할까요?')) { remove(boardRef); window.closeSidebar(); window.showToast('삭제 완료'); } };
+  window.deleteColumn = async cid => { 
+      const isConfirm = await window.customDialog('confirm', '섹션 삭제', '이 섹션을 삭제할까요?<br><span style="font-size:0.85rem;color:#888;">(안에 있는 게시물은 지워지지 않습니다)</span>', '🗑️');
+      if (isConfirm) remove(ref(db, `boards/${currentBoardId}/columns/${cid}`)); 
+  };
+  window.clearBoard = async () => { 
+      const isConfirm = await window.customDialog('confirm', '전체 삭제', '모든 게시물을 삭제합니다. 계속할까요?', '🚨');
+      if (isConfirm) { remove(boardRef); window.closeSidebar(); window.showToast('삭제 완료'); } 
+  };
   
   window.exitToLobby = async () => {
     const btn = document.querySelector('.nav-back'); btn.textContent = '⏳';
