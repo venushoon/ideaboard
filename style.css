@@ -46,7 +46,7 @@ body.hide-reactions .post-foot { display: none !important; }
 body.post-order-top #board[data-layout="column"] .column-body { flex-direction: column; }
 
 /* ─────────────────────────────────────────────
-   LOGIN VIEW 
+   LOGIN VIEW
 ───────────────────────────────────────────── */
 #loginView { 
     width: 100vw; height: 100vh; 
@@ -74,7 +74,7 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 .btn-enter:hover { background: #1e3a8a; transform: translateY(-2px); box-shadow: var(--sh-md); }
 
 /* ─────────────────────────────────────────────
-   LOBBY VIEW 
+   LOBBY VIEW (보드 목록)
 ───────────────────────────────────────────── */
 #lobbyView { width:100vw; height:100vh; display:none; flex-direction:column; background: var(--cream); overflow: hidden; position: fixed; inset: 0;}
 
@@ -150,24 +150,18 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 .nav-icon-btn:hover { background: var(--line); color:var(--ink);}
 
 #board {
-  width:100vw; height:100vh; position:relative; touch-action:none; overflow:hidden;
+  width:100vw; height:100vh; position:relative; overflow:hidden;
   background-image: radial-gradient(circle, rgba(0,0,0,0.06) 1.5px, transparent 1.5px); background-size: 30px 30px; transition: background-color .3s;
 }
 
-/* ─────────────────────────────────────────────
-   LAYOUTS
-───────────────────────────────────────────── */
-/* 1. Canvas */
-#board[data-layout="canvas"] { overflow: auto; min-width: 100vw; min-height: 100vh; -webkit-overflow-scrolling: touch; }
+/* 🌟 동적 스크롤 충돌 제어: 캔버스는 이동 자유, 나머지는 스크롤 허용 */
+#board[data-layout="canvas"] { touch-action: none !important; overflow: auto; min-width: 100vw; min-height: 100vh; -webkit-overflow-scrolling: touch; }
+#board[data-layout="wall"] { touch-action: pan-y !important; display: block; padding: 0; overflow-y: auto !important; overflow-x: hidden !important; height: 100vh; -webkit-overflow-scrolling: touch;}
+#board[data-layout="column"] { touch-action: pan-x pan-y !important; display: flex; flex-direction: row; gap: 24px; align-items: flex-start; padding: 130px 32px 40px; overflow-x: auto; overflow-y: hidden; height: 100vh; -webkit-overflow-scrolling: touch;}
+
 #board[data-layout="canvas"] .post-it { position: absolute; }
 #board[data-layout="canvas"] .post-img { max-height: 150px; }
-
-/* 2. Wall (JS Masonry) */
-#board[data-layout="wall"] { display: block; padding: 0; overflow-y: auto !important; overflow-x: hidden !important; height: 100vh; touch-action: pan-y !important; -webkit-overflow-scrolling: touch;}
 #board[data-layout="wall"] .post-it { position: absolute !important; transform: none !important; width: 280px !important; cursor: grab; margin: 0 !important; transition: left 0.3s var(--ease-spring), top 0.3s var(--ease-spring), box-shadow 0.15s; }
-
-/* 3. Column */
-#board[data-layout="column"] { display: flex; flex-direction: row; gap: 24px; align-items: flex-start; padding: 130px 32px 40px; overflow-x: auto; overflow-y: hidden; height: 100vh; -webkit-overflow-scrolling: touch;}
 #board[data-layout="column"] .post-it { position:relative !important; left:auto !important; top:auto !important; transform:none !important; width:100%; cursor:grab; margin-bottom: 16px; flex-shrink: 0;}
 
 .column-wrap { width: 320px; flex-shrink:0; background: transparent; display: flex; flex-direction: column; height: calc(100vh - 160px); }
@@ -312,7 +306,7 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 .viewer-close { position: absolute; top: -50px; right: 0; background: transparent; border: none; color: white; font-size: 2.5rem; cursor: pointer; transition: 0.2s;}
 .viewer-close:hover { transform: scale(1.2); }
 
-/* 🌟 공유 모달 리디자인 적용 (세로 리스트 형태) */
+/* 공유 모달 */
 #shareModal .modal-content { background: #f9fafb; padding: 24px;}
 #shareModal .modal-header { margin-bottom: 20px;}
 #shareModal .modal-header h3 { font-size: 1.2rem; font-weight: 800;}
@@ -386,6 +380,5 @@ input:checked + .slider:before { transform: translateX(20px); }
 .btn-admin-del { background: var(--accent); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; transition: 0.2s; white-space: nowrap;}
 .btn-admin-del:hover { filter: brightness(1.1); transform: scale(1.05);}
 
-/* 🌟 관리자 보드 링크 추가 */
 .admin-board-link { color: var(--navy); text-decoration: none; transition: 0.2s; display: inline-block; padding: 4px 0;}
 .admin-board-link:hover { color: var(--primary); text-decoration: underline; }
