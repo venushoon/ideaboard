@@ -138,7 +138,6 @@ const db  = getDatabase(app);
 const auth = getAuth(app); 
 
 let currentUserUid = null;
-/* 🔥 마스터 관리자 이메일을 여기에 입력하세요! */
 const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; 
 
 let myName = '';
@@ -151,7 +150,6 @@ try {
 const hashParams = new URLSearchParams(window.location.hash.substring(1));
 let currentBoardId = hashParams.get('board') || new URLSearchParams(window.location.search).get('board');
 
-// 🌟 로그인 및 회원가입 관련
 window.signInWithGoogle = () => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -162,7 +160,6 @@ window.logout = () => {
     signOut(auth).then(() => { window.location.hash = ''; window.location.reload(); });
 };
 
-// 🌟 회원 탈퇴 로직 (내 데이터 영구 파기)
 window.withdrawAccount = async () => {
     if(!currentUserUid) return;
     if(!confirm("정말 탈퇴하시겠습니까?\n선생님이 생성하신 '모든 보드와 데이터'가 서버에서 영구적으로 파기되며 복구할 수 없습니다.")) return;
@@ -173,7 +170,6 @@ window.withdrawAccount = async () => {
         const allBoards = snap.val() || {};
         const myBoards = Object.keys(allBoards).filter(k => allBoards[k].ownerUid === currentUserUid);
         
-        // 내 보드 지우기 루프
         for (const boardId of myBoards) {
             const roomCode = allBoards[boardId].roomCode;
             await remove(ref(db, `boards/${boardId}`));
@@ -182,7 +178,7 @@ window.withdrawAccount = async () => {
         }
         
         window.showToast("탈퇴 처리가 완료되었습니다.");
-        setTimeout(() => window.logout(), 1500); // 1.5초 뒤 자동 로그아웃
+        setTimeout(() => window.logout(), 1500);
     } catch(e) {
         window.showToast("오류가 발생했습니다.");
     }
@@ -198,7 +194,7 @@ window.enterWithCode = async () => {
     } catch (e) { window.showToast("오류가 발생했습니다. 다시 시도해주세요."); }
 };
 
-// 🌟 마스터 대시보드 로직 (관리자 팝업 안에서만 전체 보드 보임)
+// 🌟 마스터 대시보드 렌더링 함수 (보드 이름 클릭 시 링크 이동 추가)
 window.openMasterAdmin = async () => {
     window.openModal('adminModal');
     const listEl = document.getElementById('adminBoardList');
@@ -218,9 +214,10 @@ window.openMasterAdmin = async () => {
             const owner = b.ownerUid ? (b.ownerUid.substring(0, 8) + '...') : '알 수 없음';
             const isDeleted = b.deletedAt ? '<span style="color:red; font-size:0.8rem;">(휴지통)</span>' : '';
             
+            // 🌟 <a> 태그를 사용해 보드로 직접 이동하는 기능 추가 (클릭 시 팝업 닫힘 및 리로드)
             html += `
                 <tr>
-                    <td><strong>${title}</strong> ${isDeleted}</td>
+                    <td><a href="#board=${b.id}" class="admin-board-link" onclick="window.closeModal('adminModal'); setTimeout(()=>window.location.reload(), 50);"><strong>${title}</strong></a> ${isDeleted}</td>
                     <td><span style="background:var(--primary-soft); color:var(--primary); padding:4px 8px; border-radius:6px; font-weight:bold;">${code}</span></td>
                     <td style="color:var(--ink-3); font-family:monospace;">${owner}</td>
                     <td><button class="btn-admin-del" onclick="window.forceDeleteBoard('${b.id}', '${code}')">강제 삭제</button></td>
@@ -242,7 +239,6 @@ window.forceDeleteBoard = async (boardId, roomCode) => {
     }
 };
 
-// 인증 상태 감지
 onAuthStateChanged(auth, (user) => {
     if (user) {
         currentUserUid = user.uid;
@@ -250,7 +246,7 @@ onAuthStateChanged(auth, (user) => {
         try { localStorage.setItem('learner_name', myName); } catch(e) {}
         
         document.getElementById('userDisplayName').textContent = myName;
-        document.getElementById('withdrawBtn').style.display = 'block'; // 탈퇴 버튼 보이기
+        document.getElementById('withdrawBtn').style.display = 'block'; 
         
         if(user.email === MASTER_ADMIN_EMAIL) {
             const adminBtn = document.getElementById('adminBtn');
@@ -353,7 +349,6 @@ function initLobbyApp() {
         grid.innerHTML = ''; trashGrid.innerHTML = '';
         let hasTrash = false; const now = Date.now();
         
-        // 🌟 핵심 수정: 로비 화면에서는 무조건 "내가 만든 보드"만 표시합니다. (관리자라도 섞이지 않게 분리)
         const myBoards = Object.keys(data)
             .map(k => ({ id: k, ...data[k] }))
             .filter(b => b.ownerUid === currentUserUid)
