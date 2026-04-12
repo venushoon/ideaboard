@@ -48,3 +48,21 @@
        ".write": true
      }
    }
+// app.js 내부
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+// 마스터 권한을 가질 선생님의 구글 이메일 입력
+const MASTER_ADMIN_EMAIL = "teacher@gmail.com";
+
+📦 Idea-Board-Ultimate
+ ┣ 📜 index.html  # 앱의 전체 뼈대 및 모달/뷰 UI 구조
+ ┣ 📜 style.css   # 반응형 디자인, 테마, 애니메이션 스타일
+ ┗ 📜 app.js      # Firebase 연동, 드래그/스크롤 알고리즘, PDF 엔진 등 핵심 비즈니스 로직
