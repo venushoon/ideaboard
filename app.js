@@ -2,7 +2,7 @@
    🌟 1. 전역 안전장치 및 유틸리티 
 ───────────────────────────────────────────── */
 window.getInitials = name => (name || '?').charAt(0).toUpperCase();
-window.escapeHtml  = str => str ? String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '';
+window.escapeHtml  = str => str ? String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;') : '';
 window.applyMasonry = () => {}; 
 window.updateCanvasSize = () => {}; 
 window.renderPostsOrder = () => {}; 
@@ -98,7 +98,10 @@ window.closeModal = id => {
 };
 
 window.closeBgClick = (e, id) => { if (e.target.id === id) window.closeModal(id); };
-window.openSidebar = () => { document.getElementById('sbOverlay').classList.add('active'); document.getElementById('adminSidebar').classList.add('open'); };
+window.openSidebar = () => {
+    if (typeof window.isBoardOwner === 'function' && !window.isBoardOwner()) { window.showToast('보드 설정은 방장만 변경할 수 있어요.'); return; }
+    document.getElementById('sbOverlay').classList.add('active'); document.getElementById('adminSidebar').classList.add('open');
+};
 window.closeSidebar = () => { document.getElementById('sbOverlay').classList.remove('active'); document.getElementById('adminSidebar').classList.remove('open'); };
 window.openImageViewer = url => { document.getElementById('imageViewerImg').src = url; window.openModal('imageViewerModal'); };
 
@@ -222,7 +225,7 @@ function createPdfVerticalPage(title, num) {
     page.style.cssText = 'width:720px; min-height:1000px; background:white; margin-bottom:50px; padding:20px; font-family: Pretendard, sans-serif;';
     page.innerHTML = `
         <div style="border-bottom:3px solid #333; padding-bottom:10px; margin-bottom:30px; display:flex; justify-content:space-between; align-items:center;">
-            <h1 style="margin:0; font-size:24px; color:#111;">${title}</h1>
+            <h1 style="margin:0; font-size:24px; color:#111;">${window.escapeHtml(title)}</h1>
             <div style="text-align: right; color: #666;">
                 <span style="font-weight:bold;">Page ${num}</span><br>
                 <span style="font-size:12px;">${new Date().toLocaleString('ko-KR')}</span>
@@ -236,7 +239,7 @@ function createPdfVerticalPage(title, num) {
     return page;
 }
 
-/* ── 5. 파일 업로드 ── */
+/* ── 5. 파일 업로드 (Firebase Storage 사용) ── */
 window.currentFileData = null; 
 window.handleFileUpload = async (event) => {
     const file = event.target.files[0];
@@ -247,13 +250,14 @@ window.handleFileUpload = async (event) => {
     }
     
     document.getElementById('fileNameDisplay').textContent = file.name;
+    window.showToast('파일 업로드 중...');
     const isImage = file.type.startsWith('image/');
     const reader = new FileReader();
     
     reader.onload = (e) => {
         if(isImage) {
             const img = new Image();
-            img.onload = () => {
+            img.onload = async () => {
                 const canvas = document.createElement('canvas');
                 const MAX_WIDTH = 800; 
                 let width = img.width; let height = img.height;
@@ -261,19 +265,42 @@ window.handleFileUpload = async (event) => {
                 canvas.width = width; canvas.height = height;
                 const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
                 
-                window.currentFileData = { url: canvas.toDataURL('image/jpeg', 0.8), name: file.name, isImage: true };
-                document.getElementById('filePreviewImg').src = window.currentFileData.url;
-                document.getElementById('filePreviewImg').style.display = 'block';
-                document.getElementById('filePreviewFile').style.display = 'none';
-                document.getElementById('filePreviewWrap').style.display = 'block';
+                try {
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    const path = `boards/${currentBoardId}/${Date.now()}_${file.name}`;
+                    const fRef = storageRef(storage, path);
+                    await uploadString(fRef, dataUrl, 'data_url');
+                    const downloadUrl = await getDownloadURL(fRef);
+
+                    window.currentFileData = { url: downloadUrl, name: file.name, isImage: true };
+                    document.getElementById('filePreviewImg').src = downloadUrl;
+                    document.getElementById('filePreviewImg').style.display = 'block';
+                    document.getElementById('filePreviewFile').style.display = 'none';
+                    document.getElementById('filePreviewWrap').style.display = 'block';
+                } catch (err) {
+                    console.error(err);
+                    window.showToast('이미지 업로드 실패');
+                }
             };
             img.src = e.target.result;
         } else {
-            window.currentFileData = { url: e.target.result, name: file.name, isImage: false };
-            document.getElementById('filePreviewImg').style.display = 'none';
-            document.getElementById('filePreviewFile').textContent = `📁 ${file.name}`;
-            document.getElementById('filePreviewFile').style.display = 'block';
-            document.getElementById('filePreviewWrap').style.display = 'block';
+            (async () => {
+                try {
+                    const path = `boards/${currentBoardId}/${Date.now()}_${file.name}`;
+                    const fRef = storageRef(storage, path);
+                    await uploadString(fRef, e.target.result, 'data_url');
+                    const downloadUrl = await getDownloadURL(fRef);
+
+                    window.currentFileData = { url: downloadUrl, name: file.name, isImage: false };
+                    document.getElementById('filePreviewImg').style.display = 'none';
+                    document.getElementById('filePreviewFile').textContent = `📁 ${file.name}`;
+                    document.getElementById('filePreviewFile').style.display = 'block';
+                    document.getElementById('filePreviewWrap').style.display = 'block';
+                } catch (err) {
+                    console.error(err);
+                    window.showToast('파일 업로드 실패');
+                }
+            })();
         }
     };
     reader.readAsDataURL(file);
@@ -296,7 +323,8 @@ window.getYoutubeId = function(url) {
 // ─────────────────────────────────────────────
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, push, remove, get, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 /* 🔥 주의: 선생님의 Firebase 설정값으로 변경해주세요! */
 const firebaseConfig = {
@@ -312,6 +340,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 const auth = getAuth(app); 
+const storage = getStorage(app);
 
 let currentUserUid = null;
 const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; 
@@ -422,23 +451,36 @@ window.forceDeleteBoard = async (boardId, roomCode) => {
 onAuthStateChanged(auth, (user) => {
     if (user) {
         currentUserUid = user.uid;
-        myName = user.displayName || "선생님";
-        try { localStorage.setItem('learner_name', myName); } catch(e) {}
-        
-        document.getElementById('userDisplayName').textContent = myName;
-        document.getElementById('withdrawBtn').style.display = 'block'; 
-        
-        if(user.email === MASTER_ADMIN_EMAIL) {
-            const adminBtn = document.getElementById('adminBtn');
-            if(adminBtn) adminBtn.style.display = 'block';
+
+        if (!user.isAnonymous) {
+            // 선생님 (구글 로그인)
+            myName = user.displayName || "선생님";
+            try { localStorage.setItem('learner_name', myName); } catch(e) {}
+            document.getElementById('userDisplayName').textContent = myName;
+            document.getElementById('withdrawBtn').style.display = 'block';
+
+            if (user.email === MASTER_ADMIN_EMAIL) {
+                const adminBtn = document.getElementById('adminBtn');
+                if (adminBtn) adminBtn.style.display = 'block';
+            }
+        } else {
+            // 게스트 (익명 인증)
+            document.getElementById('withdrawBtn').style.display = 'none';
         }
 
-        if(currentBoardId) initBoardApp(); 
-        else initLobbyApp(); 
+        if (currentBoardId) {
+            initBoardApp();
+        } else if (!user.isAnonymous) {
+            initLobbyApp();
+        } else {
+            document.getElementById('loginView').style.display = 'flex';
+        }
     } else {
         document.getElementById('withdrawBtn').style.display = 'none';
-        if(currentBoardId) {
-            initBoardApp(); 
+        if (currentBoardId) {
+            // 참여 코드로 들어온 게스트 → 최소한의 인증(uid) 확보
+            signInAnonymously(auth).catch(() => window.showToast('접속 중 오류가 발생했습니다.'));
+            // 성공하면 이 콜백이 user가 채워진 채로 다시 호출됨
         } else {
             document.getElementById('loginView').style.display = 'flex';
             document.getElementById('lobbyView').style.display = 'none';
@@ -694,11 +736,21 @@ function initBoardApp() {
   update(metaRef, { updatedAt: Date.now(), deletedAt: null });
 
   let currentBoardMeta = {};
+
+  function isBoardOwner() {
+      return !!(currentUserUid && currentBoardMeta.ownerUid && currentUserUid === currentBoardMeta.ownerUid);
+  }
+  window.isBoardOwner = isBoardOwner;
+
   get(metaRef).then(metaSnap => {
       currentBoardMeta = metaSnap.val() || {};
       if (currentBoardMeta.roomCode) {
           const el = document.getElementById('displayRoomCode');
           if(el) el.textContent = currentBoardMeta.roomCode;
+      }
+      // 방장이 아니면 설정(⚙️) 진입점 숨기기
+      if (!isBoardOwner()) {
+          document.querySelectorAll('.nav-icon-btn').forEach(btn => btn.style.display = 'none');
       }
   });
 
@@ -811,7 +863,7 @@ function initBoardApp() {
       <div class="post-top">
         <div class="post-author-row">
           <div class="author-avatar">${window.getInitials(p.author)}</div>
-          <span class="post-author" data-real="${p.author}">${isAnon ? '익명' : p.author}</span>
+          <span class="post-author" data-real="${window.escapeHtml(p.author)}">${isAnon ? '익명' : window.escapeHtml(p.author)}</span>
         </div>
         <div class="post-btns">
           <button class="post-btn edit" title="수정">✏️</button>
@@ -868,15 +920,16 @@ function initBoardApp() {
     let html = '';
     if(p.fileData) {
         if(p.fileData.isImage) html += `<img src="${p.fileData.url}" class="post-img" alt="첨부이미지" onload="window.debouncedLayout && window.debouncedLayout()" onclick="window.openImageViewer('${p.fileData.url}')">`;
-        else html += `<a href="${p.fileData.url}" download="${p.fileData.name}" class="post-file">📁 ${p.fileData.name}</a>`;
+        else html += `<a href="${p.fileData.url}" download="${window.escapeHtml(p.fileData.name)}" class="post-file">📁 ${window.escapeHtml(p.fileData.name)}</a>`;
     }
     
-    if(p.linkUrl) {
+    if(p.linkUrl && /^https?:\/\//i.test(p.linkUrl)) {
         const ytId = window.getYoutubeId(p.linkUrl);
+        const safeUrl = window.escapeHtml(p.linkUrl);
         if(ytId) {
-            html += `<div class="yt-thumb-wrap" onclick="window.open('${p.linkUrl}', '_blank')"><img src="https://img.youtube.com/vi/${ytId}/hqdefault.jpg" class="yt-thumb"><div class="yt-play-icon">▶</div></div>`;
+            html += `<div class="yt-thumb-wrap" onclick="window.open('${safeUrl}', '_blank')"><img src="https://img.youtube.com/vi/${ytId}/hqdefault.jpg" class="yt-thumb"><div class="yt-play-icon">▶</div></div>`;
         } else {
-            html += `<a href="${p.linkUrl}" target="_blank" rel="noopener" class="post-link">🔗 참고 링크</a>`;
+            html += `<a href="${safeUrl}" target="_blank" rel="noopener" class="post-link">🔗 참고 링크</a>`;
         }
     }
 
