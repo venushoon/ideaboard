@@ -1,0 +1,65 @@
+{
+  "rules": {
+    "board_meta": {
+      "$boardId": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.child('ownerUid').val() == auth.uid) || (data.exists() && (data.child('ownerUid').val() == auth.uid || auth.token.email == 'kimsh1126@gmail.com')))",
+        "updatedAt": {
+          ".write": "auth != null"
+        }
+      },
+      ".indexOn": [
+        "ownerUid"
+      ],
+      ".read": "auth != null && ((query.orderByChild == 'ownerUid' && query.equalTo == auth.uid) || auth.token.email == 'kimsh1126@gmail.com')"
+    },
+    "boards": {
+      "$boardId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('board_meta').child($boardId).child('ownerUid').val() == auth.uid || auth.token.email == 'kimsh1126@gmail.com')",
+        "columns": {
+          "$colId": {
+            ".write": "auth != null && (root.child('board_meta').child($boardId).child('ownerUid').val() == auth.uid || auth.token.email == 'kimsh1126@gmail.com' || (!data.exists() && newData.child('createdBy').val() == auth.uid) || (data.exists() && data.child('createdBy').val() == auth.uid))"
+          }
+        },
+        "posts": {
+          "$postId": {
+            ".write": "auth != null && ((!data.exists() && newData.child('authorUid').val() == auth.uid) || (data.exists() && (data.child('authorUid').val() == auth.uid || root.child('board_meta').child($boardId).child('ownerUid').val() == auth.uid || auth.token.email == 'kimsh1126@gmail.com')))",
+            "columnId": {
+              ".write": "auth != null"
+            },
+            "comments": {
+              "$commentId": {
+                ".write": "auth != null && ((!data.exists() && newData.child('authorUid').val() == auth.uid) || (data.exists() && (data.child('authorUid').val() == auth.uid || root.child('board_meta').child($boardId).child('ownerUid').val() == auth.uid || auth.token.email == 'kimsh1126@gmail.com')))"
+              }
+            },
+            "createdAt": {
+              ".write": "auth != null"
+            },
+            "likes": {
+              "$uid": {
+                ".write": "auth != null && $uid == auth.uid"
+              }
+            },
+            "x": {
+              ".write": "auth != null"
+            },
+            "y": {
+              ".write": "auth != null"
+            }
+          },
+          ".write": "auth != null && (root.child('board_meta').child($boardId).child('ownerUid').val() == auth.uid || auth.token.email == 'kimsh1126@gmail.com')"
+        },
+        "settings": {
+          ".write": "auth != null && root.child('board_meta').child($boardId).child('ownerUid').val() == auth.uid"
+        }
+      }
+    },
+    "room_codes": {
+      "$code": {
+        ".read": true,
+        ".write": "auth != null && (auth.token.email == 'kimsh1126@gmail.com' || ((newData.exists() && root.child('board_meta').child(newData.val()).child('ownerUid').val() == auth.uid) || (!newData.exists() && data.exists() && root.child('board_meta').child(data.val()).child('ownerUid').val() == auth.uid)))"
+      }
+    }
+  }
+}
