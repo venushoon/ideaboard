@@ -322,7 +322,7 @@ window.getYoutubeId = function(url) {
 // 6. Firebase 연동 및 하이브리드 로그인/마스터 관리 로직
 // ─────────────────────────────────────────────
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getDatabase, ref, onValue, set, update, push, remove, get, onChildAdded, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+import { getDatabase, ref, onValue, set, update, push, remove, get, onChildAdded, onChildChanged, onChildRemoved, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
@@ -376,15 +376,15 @@ window.withdrawAccount = async () => {
 
     window.showToast("데이터를 파기하는 중...");
     try {
-        const snap = await get(ref(db, 'board_meta'));
+        const snap = await get(query(ref(db, 'board_meta'), orderByChild('ownerUid'), equalTo(currentUserUid)));
         const allBoards = snap.val() || {};
-        const myBoards = Object.keys(allBoards).filter(k => allBoards[k].ownerUid === currentUserUid);
-        
+        const myBoards = Object.keys(allBoards);
+
         for (const boardId of myBoards) {
             const roomCode = allBoards[boardId].roomCode;
+            if(roomCode) await remove(ref(db, `room_codes/${roomCode}`));
             await remove(ref(db, `boards/${boardId}`));
             await remove(ref(db, `board_meta/${boardId}`));
-            if(roomCode) await remove(ref(db, `room_codes/${roomCode}`));
         }
         
         window.showToast("탈퇴 처리가 완료되었습니다.");
@@ -440,10 +440,10 @@ window.forceDeleteBoard = async (boardId, roomCode) => {
     const isConfirm = await window.customDialog('confirm', '영구 삭제', '이 보드를 서버에서 영구적으로 삭제하시겠습니까?<br>이 작업은 절대 복구할 수 없습니다.', '🚨');
     if(isConfirm) {
         try {
+            if(roomCode && roomCode !== '없음') await remove(ref(db, `room_codes/${roomCode}`));
             await remove(ref(db, `boards/${boardId}`));
             await remove(ref(db, `board_meta/${boardId}`));
-            if(roomCode && roomCode !== '없음') await remove(ref(db, `room_codes/${roomCode}`));
-            window.showToast('강제 삭제 완료'); window.openMasterAdmin(); 
+            window.showToast('강제 삭제 완료'); window.openMasterAdmin();
         } catch(e) { window.showToast('삭제 중 오류 발생'); }
     }
 };
@@ -495,6 +495,8 @@ function initLobbyApp() {
     document.getElementById('appView').style.display  = 'none';
     document.getElementById('lobbyView').style.display = 'flex';
 
+    let myBoardIds = [];
+
     window.openStorageManager = () => {
         document.getElementById('storageText').innerHTML = "용량을 계산해볼까요?";
         document.getElementById('calcBtn').style.display = 'inline-block';
@@ -507,16 +509,16 @@ function initLobbyApp() {
         btn.textContent = "계산 중..."; btn.disabled = true;
 
         try {
-            const snap = await get(ref(db, 'boards')); const boards = snap.val() || {};
             let totalBytes = 0; let fileCount = 0;
 
-            Object.values(boards).forEach(board => {
+            for (const boardId of myBoardIds) {
+                const snap = await get(ref(db, `boards/${boardId}`)); const board = snap.val() || {};
                 if(board.posts) {
                     Object.values(board.posts).forEach(post => {
                         if(post.fileData && post.fileData.url) { totalBytes += post.fileData.url.length; fileCount++; }
                     });
                 }
-            });
+            }
 
             const mb = (totalBytes / (1024 * 1024)).toFixed(2);
             txt.innerHTML = `첨부파일 <b style="color:var(--accent)">${fileCount}</b>개<br>추정 사용량: <b style="color:var(--accent)">${mb} MB</b> / 1024 MB`;
@@ -531,14 +533,15 @@ function initLobbyApp() {
         if(!isConfirm) return;
         window.showToast("정리 중...");
         try {
-            const snap = await get(ref(db, 'boards')); const boards = snap.val() || {}; const updates = {};
-            Object.keys(boards).forEach(boardId => {
-                if(boards[boardId].posts) {
-                    Object.keys(boards[boardId].posts).forEach(postId => {
-                        if(boards[boardId].posts[postId].fileData) updates[`boards/${boardId}/posts/${postId}/fileData`] = null; 
+            const updates = {};
+            for (const boardId of myBoardIds) {
+                const snap = await get(ref(db, `boards/${boardId}`)); const board = snap.val() || {};
+                if(board.posts) {
+                    Object.keys(board.posts).forEach(postId => {
+                        if(board.posts[postId].fileData) updates[`boards/${boardId}/posts/${postId}/fileData`] = null;
                     });
                 }
-            });
+            }
             if(Object.keys(updates).length > 0) { await update(ref(db), updates); window.showToast("정리 완료!"); window.closeModal('storageModal'); } 
             else { await window.customDialog('alert', '알림', '삭제할 첨부파일이 없습니다.', '✅'); }
         } catch(e) { window.showToast("오류 발생"); }
@@ -564,10 +567,10 @@ function initLobbyApp() {
             try {
                 const metaSnap = await get(ref(db, `board_meta/${boardId}`));
                 const roomCode = metaSnap.val()?.roomCode;
-                
-                await remove(ref(db, `boards/${boardId}`)); 
-                await remove(ref(db, `board_meta/${boardId}`)); 
+
                 if(roomCode) await remove(ref(db, `room_codes/${roomCode}`));
+                await remove(ref(db, `boards/${boardId}`));
+                await remove(ref(db, `board_meta/${boardId}`));
                 
                 window.showToast('영구 삭제됨');
             } catch (err) {
@@ -576,7 +579,7 @@ function initLobbyApp() {
         }
     };
 
-    onValue(ref(db, 'board_meta'), snap => {
+    onValue(query(ref(db, 'board_meta'), orderByChild('ownerUid'), equalTo(currentUserUid)), snap => {
         const data  = snap.val() || {}; 
         const grid  = document.getElementById('boardGrid');
         const trashGrid = document.getElementById('trashGrid');
@@ -589,11 +592,13 @@ function initLobbyApp() {
             .map(k => ({ id: k, ...data[k] }))
             .filter(b => b.ownerUid === currentUserUid)
             .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        myBoardIds = myBoards.map(b => b.id);
 
         myBoards.forEach(b => {
           if (b.deletedAt) {
               if (now - b.deletedAt > 15 * 24 * 60 * 60 * 1000) {
-                  remove(ref(db, `boards/${b.id}`)); remove(ref(db, `board_meta/${b.id}`)); return; 
+                  if (b.roomCode) remove(ref(db, `room_codes/${b.roomCode}`));
+                  remove(ref(db, `boards/${b.id}`)); remove(ref(db, `board_meta/${b.id}`)); return;
               }
               hasTrash = true;
               const card = document.createElement('div'); card.className = 'board-card trash-card';
@@ -733,7 +738,7 @@ function initBoardApp() {
   };
   ensureName();
 
-  update(metaRef, { updatedAt: Date.now(), deletedAt: null });
+  update(metaRef, { updatedAt: Date.now() });
 
   let currentBoardMeta = {};
 
@@ -741,6 +746,21 @@ function initBoardApp() {
       return !!(currentUserUid && currentBoardMeta.ownerUid && currentUserUid === currentBoardMeta.ownerUid);
   }
   window.isBoardOwner = isBoardOwner;
+
+  // 게시물 관리 권한: 작성자 본인 또는 방장. authorUid가 없는 예전 게시물은 방장만.
+  function canManagePost(p) {
+      if (!p) return false;
+      return p.authorUid ? (p.authorUid === currentUserUid || isBoardOwner()) : isBoardOwner();
+  }
+
+  function refreshPostPermissions() {
+      Object.keys(localPosts).forEach(pid => {
+          const el = localPosts[pid]; const p = allPostsData[pid];
+          if (!el || !p) return;
+          const btns = el.querySelector('.post-btns');
+          if (btns) btns.style.display = canManagePost(p) ? '' : 'none';
+      });
+  }
 
   get(metaRef).then(metaSnap => {
       currentBoardMeta = metaSnap.val() || {};
@@ -752,6 +772,7 @@ function initBoardApp() {
       if (!isBoardOwner()) {
           document.querySelectorAll('.nav-icon-btn').forEach(btn => btn.style.display = 'none');
       }
+      refreshPostPermissions();
   });
 
   onValue(settingsRef, snap => {
@@ -763,7 +784,7 @@ function initBoardApp() {
     const bDesc = s.description || `설명이 없습니다.`;
     if(document.activeElement.id !== 'sbDescInput') document.getElementById('sbDescInput').value = bDesc;
     
-    update(metaRef, { title: bTitle });
+    if (isBoardOwner()) update(metaRef, { title: bTitle });
 
     document.body.classList.toggle('hide-comments', s.commentsEnabled === false);
     document.body.classList.toggle('hide-reactions', s.reactionType === 'none');
@@ -882,12 +903,17 @@ function initBoardApp() {
         <input class="comment-input" type="text" placeholder="댓글 달기…">
       </div>`;
 
-    el.querySelector('.del').onclick = async e => { 
-        e.stopPropagation(); 
+    el.querySelector('.del').onclick = async e => {
+        e.stopPropagation();
+        if (!canManagePost(allPostsData[id])) { window.showToast('본인 글만 삭제할 수 있어요.'); return; }
         const isConfirm = await window.customDialog('confirm', '포스트잇 삭제', '이 포스트잇을 삭제할까요?', '🗑️');
-        if(isConfirm) remove(ref(db, `boards/${currentBoardId}/posts/${id}`)); 
+        if(isConfirm) remove(ref(db, `boards/${currentBoardId}/posts/${id}`));
     };
-    el.querySelector('.edit').onclick = e => { e.stopPropagation(); window.editPost(id); };
+    el.querySelector('.edit').onclick = e => {
+        e.stopPropagation();
+        if (!canManagePost(allPostsData[id])) { window.showToast('본인 글만 수정할 수 있어요.'); return; }
+        window.editPost(id);
+    };
     el.querySelector('.like-btn').onclick = e => { e.stopPropagation(); window.toggleLike(id); };
     
     el.querySelector('.comment-input').addEventListener('keydown', e => {
@@ -917,6 +943,8 @@ function initBoardApp() {
 
   function updatePostEl (el, id, p) {
     el.style.backgroundColor = p.color || '#ffffff';
+    const btns = el.querySelector('.post-btns');
+    if (btns) btns.style.display = canManagePost(p) ? '' : 'none';
     let html = '';
     if(p.fileData) {
         if(p.fileData.isImage) html += `<img src="${p.fileData.url}" class="post-img" alt="첨부이미지" onload="window.debouncedLayout && window.debouncedLayout()" onclick="window.openImageViewer('${p.fileData.url}')">`;
@@ -985,18 +1013,22 @@ function initBoardApp() {
     }
 
     Object.entries(localColumnsData).sort((a,b)=>a[1].order - b[1].order).forEach(([cid, data]) => {
+      const canManageCol = isBoardOwner() || data.createdBy === currentUserUid;
       if (localColEls[cid]) {
         const inp = localColEls[cid].querySelector('.column-title-input');
         if (document.activeElement !== inp) inp.value = data.title || '';
+        inp.disabled = !canManageCol;
+        const delBtn = localColEls[cid].querySelector('.column-del-btn');
+        if (delBtn) delBtn.style.display = canManageCol ? '' : 'none';
         return;
       }
       const wrap = document.createElement('div');
       wrap.className = 'column-wrap'; wrap.id = `col-${cid}`;
-      
+
       wrap.innerHTML = `
         <div class="column-head">
-          <input class="column-title-input" value="${window.escapeHtml(data.title||'')}" placeholder="섹션 이름" onchange="window.renameColumn('${cid}', this.value)">
-          <button class="column-del-btn" onclick="window.deleteColumn('${cid}')" title="섹션 삭제">✕</button>
+          <input class="column-title-input" value="${window.escapeHtml(data.title||'')}" placeholder="섹션 이름" onchange="window.renameColumn('${cid}', this.value)" ${canManageCol ? '' : 'disabled'}>
+          <button class="column-del-btn" onclick="window.deleteColumn('${cid}')" title="섹션 삭제" ${canManageCol ? '' : 'style="display:none;"'}>✕</button>
         </div>
         <button class="column-add-post" onclick="window.openWriteModal('${cid}')">＋ 포스트잇 추가</button>
         <div class="column-body" id="colbody-${cid}"></div>`;
@@ -1161,6 +1193,7 @@ function initBoardApp() {
       push(boardRef, {
         content, fileData: fileData, linkUrl, color,
         author:    myName,
+        authorUid: currentUserUid,
         x:         rand(window.innerWidth  / 2 - 137, 40),
         y:         rand(window.innerHeight / 2 - 80,  40),
         columnId:  currentColId || null,
@@ -1171,9 +1204,10 @@ function initBoardApp() {
     window.closeModal('writeModal');
   };
 
-  window.deletePost = async id => { 
+  window.deletePost = async id => {
+      if (!canManagePost(allPostsData[id])) { window.showToast('본인 글만 삭제할 수 있어요.'); return; }
       const isConfirm = await window.customDialog('confirm', '포스트잇 삭제', '이 포스트잇을 삭제할까요?', '🗑️');
-      if(isConfirm) remove(ref(db, `boards/${currentBoardId}/posts/${id}`)); 
+      if(isConfirm) remove(ref(db, `boards/${currentBoardId}/posts/${id}`));
   };
   
   window.toggleLike = async id => {
@@ -1212,11 +1246,11 @@ function initBoardApp() {
     }
   }
   
-  window.addComment = (id, text, inputEl) => { push(ref(db, `boards/${currentBoardId}/posts/${id}/comments`), { author: myName, text, timestamp: Date.now() }); };
+  window.addComment = (id, text, inputEl) => { push(ref(db, `boards/${currentBoardId}/posts/${id}/comments`), { author: myName, authorUid: currentUserUid, text, timestamp: Date.now() }); };
 
-  window.addColumn = async () => { 
+  window.addColumn = async () => {
       const t = await window.customDialog('prompt', '섹션 추가', '새 섹션의 이름을 입력하세요.', '🏛️');
-      if (t && t.trim()) push(columnsRef, { title: t.trim(), order: Date.now() }); 
+      if (t && t.trim()) push(columnsRef, { title: t.trim(), order: Date.now(), createdBy: currentUserUid });
   };
   window.renameColumn = (cid, v) => update(ref(db, `boards/${currentBoardId}/columns/${cid}`), { title: v });
   window.deleteColumn = async cid => { 
