@@ -382,3 +382,23 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 .admin-board-link { color: var(--navy); text-decoration: none; transition: 0.2s; display: inline-block; padding: 4px 0;}
 .admin-board-link:hover { color: var(--primary); text-decoration: underline; }
+
+/* ─────────────────────────────────────────────
+   글작성 개선 (카운터·버튼 상태·드롭·하이라이트·댓글 삭제)
+───────────────────────────────────────────── */
+.char-counter { text-align: right; font-size: 0.8rem; color: var(--ink-3); margin-top: 6px; font-weight: 600; }
+.char-counter.over { color: var(--accent); font-weight: 800; }
+.field-hint { font-size: 0.8rem; color: var(--ink-3); margin: 10px 0 0 0; line-height: 1.4; }
+.btn-submit:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+.btn-submit:disabled:hover { background: var(--primary); transform: none; box-shadow: none; }
+#writeModal .modal-content.drag-over { outline: 2px dashed var(--primary); outline-offset: -8px; }
+
+@keyframes postPulse {
+  0% { box-shadow: 0 0 0 0 rgba(153, 27, 27, 0.45); }
+  100% { box-shadow: 0 0 0 16px rgba(153, 27, 27, 0); }
+}
+.post-it.just-posted { animation: postIn .3s var(--ease-spring) both, postPulse 1.1s ease-out .25s 2; }
+
+.comment-del { background: none; border: none; color: var(--ink-3); cursor: pointer; font-size: 0.72rem; padding: 0 0 0 6px; opacity: 0.35; transition: 0.15s; vertical-align: baseline; }
+.comment-item:hover .comment-del { opacity: 1; }
+.comment-del:hover { color: var(--accent); }
