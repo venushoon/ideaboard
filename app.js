@@ -239,68 +239,47 @@ function createPdfVerticalPage(title, num) {
     return page;
 }
 
-/* ── 5. 파일 업로드 (Firebase Storage 사용) ── */
-window.currentFileData = null; 
+/* ── 5. 파일 첨부 (base64로 변환해 Realtime Database에 함께 저장) ──
+   Firebase Storage는 Blaze(유료) 요금제에서만 개설할 수 있어, 무료 Spark 요금제에서는
+   첨부를 base64 data URL로 게시물 데이터에 직접 저장하는 방식을 사용합니다.
+   이미지는 800px·JPEG 0.8로 압축되어 실제 저장 크기는 수백 KB 수준입니다. */
+window.currentFileData = null;
 window.handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if(!file) return;
-    if(file.size > 2 * 1024 * 1024) { 
-        await window.customDialog('alert', '용량 초과', '용량 제한: 2MB 이하만 업로드 가능합니다.', '⚠️'); 
-        return; 
+    if(file.size > 2 * 1024 * 1024) {
+        await window.customDialog('alert', '용량 초과', '용량 제한: 2MB 이하만 업로드 가능합니다.', '⚠️');
+        return;
     }
-    
+
     document.getElementById('fileNameDisplay').textContent = file.name;
-    window.showToast('파일 업로드 중...');
     const isImage = file.type.startsWith('image/');
     const reader = new FileReader();
-    
+
     reader.onload = (e) => {
         if(isImage) {
             const img = new Image();
-            img.onload = async () => {
+            img.onload = () => {
                 const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 800; 
+                const MAX_WIDTH = 800;
                 let width = img.width; let height = img.height;
                 if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
                 canvas.width = width; canvas.height = height;
                 const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
-                
-                try {
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                    const path = `boards/${currentBoardId}/${Date.now()}_${file.name}`;
-                    const fRef = storageRef(storage, path);
-                    await uploadString(fRef, dataUrl, 'data_url');
-                    const downloadUrl = await getDownloadURL(fRef);
 
-                    window.currentFileData = { url: downloadUrl, name: file.name, isImage: true };
-                    document.getElementById('filePreviewImg').src = downloadUrl;
-                    document.getElementById('filePreviewImg').style.display = 'block';
-                    document.getElementById('filePreviewFile').style.display = 'none';
-                    document.getElementById('filePreviewWrap').style.display = 'block';
-                } catch (err) {
-                    console.error(err);
-                    window.showToast('이미지 업로드 실패');
-                }
+                window.currentFileData = { url: canvas.toDataURL('image/jpeg', 0.8), name: file.name, isImage: true };
+                document.getElementById('filePreviewImg').src = window.currentFileData.url;
+                document.getElementById('filePreviewImg').style.display = 'block';
+                document.getElementById('filePreviewFile').style.display = 'none';
+                document.getElementById('filePreviewWrap').style.display = 'block';
             };
             img.src = e.target.result;
         } else {
-            (async () => {
-                try {
-                    const path = `boards/${currentBoardId}/${Date.now()}_${file.name}`;
-                    const fRef = storageRef(storage, path);
-                    await uploadString(fRef, e.target.result, 'data_url');
-                    const downloadUrl = await getDownloadURL(fRef);
-
-                    window.currentFileData = { url: downloadUrl, name: file.name, isImage: false };
-                    document.getElementById('filePreviewImg').style.display = 'none';
-                    document.getElementById('filePreviewFile').textContent = `📁 ${file.name}`;
-                    document.getElementById('filePreviewFile').style.display = 'block';
-                    document.getElementById('filePreviewWrap').style.display = 'block';
-                } catch (err) {
-                    console.error(err);
-                    window.showToast('파일 업로드 실패');
-                }
-            })();
+            window.currentFileData = { url: e.target.result, name: file.name, isImage: false };
+            document.getElementById('filePreviewImg').style.display = 'none';
+            document.getElementById('filePreviewFile').textContent = `📁 ${file.name}`;
+            document.getElementById('filePreviewFile').style.display = 'block';
+            document.getElementById('filePreviewWrap').style.display = 'block';
         }
     };
     reader.readAsDataURL(file);
@@ -324,7 +303,6 @@ window.getYoutubeId = function(url) {
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, push, remove, get, onChildAdded, onChildChanged, onChildRemoved, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getStorage, ref as storageRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 /* 🔥 주의: 선생님의 Firebase 설정값으로 변경해주세요! */
 const firebaseConfig = {
@@ -340,7 +318,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 const auth = getAuth(app); 
-const storage = getStorage(app);
 
 let currentUserUid = null;
 const MASTER_ADMIN_EMAIL = "kimsh1126@gmail.com"; 
