@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>나만의 아이디어 보드 (Ultimate)</title>
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -169,6 +169,7 @@
     <div class="field">
       <label class="field-label">내용</label>
       <textarea id="postInput" class="modal-textarea" placeholder="자유롭게 의견을 적어주세요…"></textarea>
+      <div class="char-counter"><span id="charCount">0</span> / 1000자 · Ctrl+Enter로 바로 게시</div>
     </div>
     
     <div class="field">
@@ -183,6 +184,7 @@
           <div id="filePreviewFile" class="file-preview-doc" style="display:none;"></div>
           <button class="file-remove" onclick="removeFile()">✕</button>
       </div>
+      <p class="field-hint">이미지를 복사해 붙여넣거나(Ctrl+V), 파일을 이 창으로 끌어다 놓아도 첨부돼요.</p>
     </div>
 
     <div class="field">
@@ -201,7 +203,7 @@
 
     <div class="btn-wrap">
       <button class="btn btn-cancel" onclick="closeModal('writeModal')">취소</button>
-      <button class="btn btn-submit" style="background:var(--primary);" onclick="submitPost()">게시하기</button>
+      <button class="btn btn-submit" id="submitPostBtn" style="background:var(--primary);" onclick="submitPost()" disabled>게시하기</button>
     </div>
   </div>
 </div>
