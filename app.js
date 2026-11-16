@@ -244,15 +244,38 @@ function createPdfVerticalPage(title, num) {
    첨부를 base64 data URL로 게시물 데이터에 직접 저장하는 방식을 사용합니다.
    이미지는 800px·JPEG 0.8로 압축되어 실제 저장 크기는 수백 KB 수준입니다. */
 window.currentFileData = null;
-window.handleFileUpload = async (event) => {
-    const file = event.target.files[0];
+window.writeMode = 'new'; // 'new' | 'edit' — 임시저장(드래프트) 동기화 여부 판단용
+window.writeDraft = { content: '', linkUrl: '', color: '#ffffff', fileData: null };
+window.MAX_POST_CHARS = 1000;
+
+window.applyFilePreview = () => {
+    const fd = window.currentFileData;
+    const wrap = document.getElementById('filePreviewWrap');
+    if (!fd) {
+        wrap.style.display = 'none';
+        document.getElementById('fileNameDisplay').textContent = '선택된 파일 없음';
+        return;
+    }
+    document.getElementById('fileNameDisplay').textContent = fd.name;
+    if (fd.isImage) {
+        document.getElementById('filePreviewImg').src = fd.url;
+        document.getElementById('filePreviewImg').style.display = 'block';
+        document.getElementById('filePreviewFile').style.display = 'none';
+    } else {
+        document.getElementById('filePreviewImg').style.display = 'none';
+        document.getElementById('filePreviewFile').textContent = `📁 ${fd.name}`;
+        document.getElementById('filePreviewFile').style.display = 'block';
+    }
+    wrap.style.display = 'block';
+};
+
+window.processFile = async (file) => {
     if(!file) return;
     if(file.size > 2 * 1024 * 1024) {
         await window.customDialog('alert', '용량 초과', '용량 제한: 2MB 이하만 업로드 가능합니다.', '⚠️');
         return;
     }
 
-    document.getElementById('fileNameDisplay').textContent = file.name;
     const isImage = file.type.startsWith('image/');
     const reader = new FileReader();
 
@@ -268,28 +291,87 @@ window.handleFileUpload = async (event) => {
                 const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
 
                 window.currentFileData = { url: canvas.toDataURL('image/jpeg', 0.8), name: file.name, isImage: true };
-                document.getElementById('filePreviewImg').src = window.currentFileData.url;
-                document.getElementById('filePreviewImg').style.display = 'block';
-                document.getElementById('filePreviewFile').style.display = 'none';
-                document.getElementById('filePreviewWrap').style.display = 'block';
+                if (window.writeMode !== 'edit') window.writeDraft.fileData = window.currentFileData;
+                window.applyFilePreview();
+                window.refreshSubmitState && window.refreshSubmitState();
             };
             img.src = e.target.result;
         } else {
             window.currentFileData = { url: e.target.result, name: file.name, isImage: false };
-            document.getElementById('filePreviewImg').style.display = 'none';
-            document.getElementById('filePreviewFile').textContent = `📁 ${file.name}`;
-            document.getElementById('filePreviewFile').style.display = 'block';
-            document.getElementById('filePreviewWrap').style.display = 'block';
+            if (window.writeMode !== 'edit') window.writeDraft.fileData = window.currentFileData;
+            window.applyFilePreview();
+            window.refreshSubmitState && window.refreshSubmitState();
         }
     };
     reader.readAsDataURL(file);
 };
 
+window.handleFileUpload = (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (file) window.processFile(file);
+    event.target.value = '';
+};
+
 window.removeFile = () => {
     window.currentFileData = null; document.getElementById('fileInput').value = '';
-    document.getElementById('fileNameDisplay').textContent = '선택된 파일 없음';
-    document.getElementById('filePreviewWrap').style.display = 'none';
+    if (window.writeMode !== 'edit') window.writeDraft.fileData = null;
+    window.applyFilePreview();
+    window.refreshSubmitState && window.refreshSubmitState();
 };
+
+/* ── 5-1. 글작성 편의: 글자수 카운터, 제출 버튼 상태, 붙여넣기·드래그 첨부, 임시저장 ── */
+window.updateCharCount = () => {
+    const input = document.getElementById('postInput');
+    const counter = document.querySelector('.char-counter');
+    const countEl = document.getElementById('charCount');
+    if (!input || !countEl) return;
+    countEl.textContent = input.value.length;
+    if (counter) counter.classList.toggle('over', input.value.length > window.MAX_POST_CHARS);
+};
+
+window.refreshSubmitState = () => {
+    const btn = document.getElementById('submitPostBtn');
+    if (!btn || btn.dataset.busy === '1') return;
+    const hasContent = document.getElementById('postInput').value.trim().length > 0;
+    const hasLink = document.getElementById('linkUrlInput').value.trim().length > 0;
+    btn.disabled = !(hasContent || hasLink || window.currentFileData);
+};
+
+(() => {
+    const postInputEl = document.getElementById('postInput');
+    const linkInputEl = document.getElementById('linkUrlInput');
+    const writeModalEl = document.getElementById('writeModal');
+    if (!postInputEl || !writeModalEl) return;
+
+    postInputEl.addEventListener('input', () => {
+        window.updateCharCount();
+        window.refreshSubmitState();
+        if (window.writeMode !== 'edit') window.writeDraft.content = postInputEl.value;
+    });
+    postInputEl.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); window.submitPost(); }
+    });
+    postInputEl.addEventListener('paste', (e) => {
+        const item = [...((e.clipboardData && e.clipboardData.items) || [])].find(i => i.type.startsWith('image/'));
+        if (item) { e.preventDefault(); window.processFile(item.getAsFile()); }
+    });
+    if (linkInputEl) linkInputEl.addEventListener('input', () => {
+        window.refreshSubmitState();
+        if (window.writeMode !== 'edit') window.writeDraft.linkUrl = linkInputEl.value;
+    });
+    document.querySelectorAll('.color-opt').forEach(opt => {
+        opt.addEventListener('click', () => { if (window.writeMode !== 'edit') window.writeDraft.color = opt.dataset.color; });
+    });
+
+    const modalContent = writeModalEl.querySelector('.modal-content');
+    writeModalEl.addEventListener('dragover', (e) => { e.preventDefault(); modalContent.classList.add('drag-over'); });
+    writeModalEl.addEventListener('dragleave', (e) => { if (e.target === writeModalEl) modalContent.classList.remove('drag-over'); });
+    writeModalEl.addEventListener('drop', (e) => {
+        e.preventDefault(); modalContent.classList.remove('drag-over');
+        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file) window.processFile(file);
+    });
+})();
 
 window.getYoutubeId = function(url) {
     const regExp = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
@@ -639,8 +721,10 @@ function initBoardApp() {
 
   let isAnonMode     = false;
   let reactionType   = 'like'; 
-  let currentColId   = null;   
+  let currentColId   = null;
   let currentEditId  = null;
+  let isSubmitting   = false;
+  let lastOwnPostId  = null;
 
   let allPostsData   = {};
   let localColumnsData = {};
@@ -709,7 +793,7 @@ function initBoardApp() {
   }
   window.confirmName = () => {
     const v = document.getElementById('nameInput').value.trim();
-    if (!v) return; myName = v; 
+    if (!v) return; myName = v.slice(0, 12);
     try { localStorage.setItem('learner_name', myName); } catch(e) {}
     window.closeModal('nameModal');
   };
@@ -809,12 +893,13 @@ function initBoardApp() {
       const p = snap.val();
       allPostsData[id] = p;
       let el = localPosts[id];
-      if (!el) { 
-          el = createPostEl(id, p); 
-          localPosts[id] = el; 
-          placePost(el, p.columnId); 
+      if (!el) {
+          el = createPostEl(id, p);
+          localPosts[id] = el;
+          placePost(el, p.columnId);
       }
       updatePostEl(el, id, p);
+      if (id === lastOwnPostId) markOwnPost(el);
       window.debouncedLayout();
   });
 
@@ -877,7 +962,7 @@ function initBoardApp() {
       </div>
       <div class="comments-wrap">
         <div class="comment-list"></div>
-        <input class="comment-input" type="text" placeholder="댓글 달기…">
+        <input class="comment-input" type="text" placeholder="댓글 달기…" maxlength="200">
       </div>`;
 
     el.querySelector('.del').onclick = async e => {
@@ -963,9 +1048,11 @@ function initBoardApp() {
     let cHtml = '';
     if (p.comments) {
       const isAnon = document.getElementById('anonToggle').checked;
-      Object.values(p.comments).sort((a,b) => a.timestamp - b.timestamp).forEach(c => {
+      Object.entries(p.comments).sort((a,b) => (a[1].timestamp || 0) - (b[1].timestamp || 0)).forEach(([cid, c]) => {
         const name = isAnon ? '익명' : window.escapeHtml(c.author || '?');
-        cHtml += `<div class="comment-item"><span class="c-author">${name}</span><span class="c-text">${window.escapeHtml(c.text)}</span></div>`;
+        const canDelComment = c.authorUid ? (c.authorUid === currentUserUid || isBoardOwner()) : isBoardOwner();
+        const delBtn = canDelComment ? `<button class="comment-del" title="댓글 삭제" onclick="window.deleteComment('${id}','${cid}')">✕</button>` : '';
+        cHtml += `<div class="comment-item"><span class="c-author">${name}</span><span class="c-text">${window.escapeHtml(c.text)}</span>${delBtn}</div>`;
       });
     }
     list.innerHTML = cHtml; list.scrollTop = list.scrollHeight;
@@ -1108,78 +1195,112 @@ function initBoardApp() {
 
   /* ── CRUD ── */
   window.openWriteModal = async (colId = null) => {
-    if (!myName) { 
+    if (!myName) {
         myName = await window.customDialog('prompt', '반가워요!', '보드에서 사용할 이름을 입력해 주세요.', '👋');
         if(myName && myName.trim()) {
+            myName = myName.trim().slice(0, 12);
             try { localStorage.setItem('learner_name', myName); } catch(e) {}
         } else {
             myName = ''; return; // 취소시 중단
         }
     }
-    currentColId  = colId; currentEditId = null; window.removeFile();
-    document.getElementById('postInput').value    = '';
-    document.getElementById('linkUrlInput').value = '';
+    currentColId  = colId; currentEditId = null; window.writeMode = 'new';
+    document.getElementById('fileInput').value = '';
+    // 임시저장(드래프트) 복원: 실수로 창을 닫아도 쓰던 글이 유지됩니다
+    document.getElementById('postInput').value    = window.writeDraft.content || '';
+    document.getElementById('linkUrlInput').value = window.writeDraft.linkUrl || '';
+    window.currentFileData = window.writeDraft.fileData || null;
+    window.applyFilePreview();
     document.getElementById('writeModalTitle').textContent = '어떤 아이디어를 나눌까요?';
-    document.querySelectorAll('.color-opt').forEach((d,i) => d.classList.toggle('active', i===0)); 
+    document.querySelectorAll('.color-opt').forEach(d => d.classList.toggle('active', d.dataset.color === (window.writeDraft.color || '#ffffff')));
+    window.updateCharCount(); window.refreshSubmitState();
     window.openModal('writeModal');
     setTimeout(() => document.getElementById('postInput').focus(), 80);
   };
 
   window.editPost = id => {
-    currentEditId = id; const p = allPostsData[id]; if (!p) return; window.removeFile();
+    currentEditId = id; const p = allPostsData[id]; if (!p) return;
+    window.writeMode = 'edit';
+    document.getElementById('fileInput').value = '';
     document.getElementById('postInput').value    = p.content || '';
-    if(p.fileData) {
-        window.currentFileData = p.fileData;
-        if(p.fileData.isImage) {
-            document.getElementById('filePreviewImg').src = p.fileData.url;
-            document.getElementById('filePreviewImg').style.display = 'block';
-            document.getElementById('filePreviewFile').style.display = 'none';
-        } else {
-            document.getElementById('filePreviewImg').style.display = 'none';
-            document.getElementById('filePreviewFile').textContent = `📁 ${p.fileData.name}`;
-            document.getElementById('filePreviewFile').style.display = 'block';
-        }
-        document.getElementById('filePreviewWrap').style.display = 'block';
-    }
+    window.currentFileData = p.fileData || null;
+    window.applyFilePreview();
     document.getElementById('linkUrlInput').value = p.linkUrl  || '';
     document.getElementById('writeModalTitle').textContent = '게시물 수정';
     document.querySelectorAll('.color-opt').forEach(d => { d.classList.toggle('active', d.dataset.color === p.color); });
+    window.updateCharCount(); window.refreshSubmitState();
     window.openModal('writeModal');
   };
 
   window.submitPost = async () => {
-    if (!myName) { 
+    if (isSubmitting) return; // 중복 제출 방지
+    if (!myName) {
         myName = await window.customDialog('prompt', '반가워요!', '보드에서 사용할 이름을 입력해 주세요.', '👋');
         if(myName && myName.trim()) {
+            myName = myName.trim().slice(0, 12);
             try { localStorage.setItem('learner_name', myName); } catch(e) {}
         } else {
             myName = ''; return;
         }
     }
     const content  = document.getElementById('postInput').value.trim();
-    const linkUrl  = document.getElementById('linkUrlInput').value.trim();
+    let   linkUrl  = document.getElementById('linkUrlInput').value.trim();
     const fileData = window.currentFileData;
     if (!content && !fileData && !linkUrl) { window.showToast('내용, 첨부파일 또는 링크를 입력해 주세요.'); return; }
+    if (content.length > window.MAX_POST_CHARS) { window.showToast(`내용은 ${window.MAX_POST_CHARS}자까지 입력할 수 있어요.`); return; }
+    if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
+        if (/^[\w가-힣-]+(\.[\w가-힣-]+)+/.test(linkUrl)) linkUrl = 'https://' + linkUrl; // 도메인만 입력한 경우 자동 보정
+        else { window.showToast('링크 형식을 확인해 주세요.'); return; }
+    }
 
     const color = document.querySelector('.color-opt.active')?.dataset.color || '#ffffff';
+    const submitBtn = document.getElementById('submitPostBtn');
+    const origBtnText = submitBtn ? submitBtn.textContent : '';
 
-    if (currentEditId) {
-      update(ref(db, `boards/${currentBoardId}/posts/${currentEditId}`), { content, fileData: fileData, linkUrl, color });
-    } else {
-      const rand = (v, r) => v + (Math.random() * r * 2 - r);
-      push(boardRef, {
-        content, fileData: fileData, linkUrl, color,
-        author:    myName,
-        authorUid: currentUserUid,
-        x:         rand(window.innerWidth  / 2 - 137, 40),
-        y:         rand(window.innerHeight / 2 - 80,  40),
-        columnId:  currentColId || null,
-        createdAt: Date.now()
-      });
+    isSubmitting = true;
+    if (submitBtn) { submitBtn.dataset.busy = '1'; submitBtn.disabled = true; submitBtn.textContent = '게시 중…'; }
+
+    try {
+      if (currentEditId) {
+        await update(ref(db, `boards/${currentBoardId}/posts/${currentEditId}`), { content, fileData: fileData, linkUrl, color });
+      } else {
+        const rand = (v, r) => v + (Math.random() * r * 2 - r);
+        // 캔버스: 글이 쌓일수록 계단식으로 조금씩 어긋나게 배치해 겹침을 줄입니다
+        const cascade = (Object.keys(allPostsData).length % 8) * 28;
+        const newRef = await push(boardRef, {
+          content, fileData: fileData, linkUrl, color,
+          author:    myName,
+          authorUid: currentUserUid,
+          x:         rand(window.innerWidth  / 2 - 137 + cascade - 112, 12),
+          y:         rand(window.innerHeight / 2 - 80 + cascade - 112,  12),
+          columnId:  currentColId || null,
+          createdAt: Date.now()
+        });
+        lastOwnPostId = newRef.key;
+        window.writeDraft = { content: '', linkUrl: '', color: '#ffffff', fileData: null }; // 게시 성공 시 임시저장 비우기
+      }
+      update(metaRef, { updatedAt: Date.now() });
+      window.closeModal('writeModal');
+      if (lastOwnPostId && localPosts[lastOwnPostId]) markOwnPost(localPosts[lastOwnPostId]);
+    } catch (e) {
+      console.error(e);
+      window.showToast('게시에 실패했어요. 연결을 확인하고 다시 시도해 주세요.'); // 모달을 닫지 않아 작성 내용이 유지됩니다
+    } finally {
+      isSubmitting = false;
+      if (submitBtn) { submitBtn.dataset.busy = ''; submitBtn.textContent = origBtnText; window.refreshSubmitState(); }
     }
-    update(metaRef, { updatedAt: Date.now() });
-    window.closeModal('writeModal');
   };
+
+  function markOwnPost(el) {
+      if (!el) return;
+      el.classList.remove('just-posted');
+      void el.offsetWidth; // 애니메이션 재시작용
+      el.classList.add('just-posted');
+      if (window.currentLayout !== 'canvas') {
+          setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+      }
+      setTimeout(() => el.classList.remove('just-posted'), 2600);
+  }
 
   window.deletePost = async id => {
       if (!canManagePost(allPostsData[id])) { window.showToast('본인 글만 삭제할 수 있어요.'); return; }
@@ -1224,6 +1345,8 @@ function initBoardApp() {
   }
   
   window.addComment = (id, text, inputEl) => { push(ref(db, `boards/${currentBoardId}/posts/${id}/comments`), { author: myName, authorUid: currentUserUid, text, timestamp: Date.now() }); };
+
+  window.deleteComment = (postId, commentId) => { remove(ref(db, `boards/${currentBoardId}/posts/${postId}/comments/${commentId}`)); };
 
   window.addColumn = async () => {
       const t = await window.customDialog('prompt', '섹션 추가', '새 섹션의 이름을 입력하세요.', '🏛️');
