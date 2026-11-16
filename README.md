@@ -44,10 +44,10 @@
 2. **Realtime Database**를 생성하고, 보안 규칙(Rules)에 이 저장소의 [`database.rules.json`](database.rules.json) 내용을 그대로 붙여넣어 게시합니다.
    > ⚠️ `.read: true, .write: true` 같은 전면 개방 규칙은 절대 사용하지 마세요. 참여 코드 목록이 통째로 열람되고 누구나 모든 보드를 지울 수 있게 됩니다. 규칙 파일에는 ① 참여 코드는 정확한 코드 하나만 조회 가능(목록 열거 차단), ② 게시물은 작성자 본인과 방장만 수정·삭제, ③ 보드 설정은 방장만 변경 같은 권한이 들어 있습니다.
    > 규칙 파일 안의 마스터 이메일(`kimsh1126@gmail.com`)은 본인의 구글 이메일로 바꾸세요.
-3. **Storage**를 생성하고, 규칙에 [`storage.rules`](storage.rules) 내용을 게시합니다.
+3. 첨부파일은 별도 Storage 없이 **Realtime Database에 base64로 함께 저장**됩니다. (Firebase Storage는 Blaze 유료 요금제에서만 개설할 수 있기 때문입니다) 나중에 Blaze로 전환해 Storage를 쓰려면 [`storage.rules`](storage.rules)를 게시하세요.
 4. **Authentication (인증)** 설정에서 `Google`과 `익명(Anonymous)` 제공업체를 모두 사용 설정(Enable)합니다. (학생 입장에 익명 인증이 필요합니다)
 5. **Authentication -> Settings -> 승인된 도메인**에 배포할 사이트 주소(예: `your-username.github.io`)를 추가합니다.
-6. Firebase CLI가 있다면 `firebase deploy --only database,storage` 명령으로 규칙 파일들을 그대로 배포할 수도 있습니다. (`firebase.json` 포함)
+6. Firebase CLI가 있다면 `firebase deploy --only database` 명령으로 규칙 파일을 그대로 배포할 수도 있습니다. (`firebase.json` 포함)
 
 ### 2. 소스 코드 연결
 `app.js` 파일을 열고, 상단의 `firebaseConfig` 객체와 마스터 관리자 이메일을 본인의 프로젝트 정보로 변경합니다.
@@ -81,7 +81,7 @@ const MASTER_ADMIN_EMAIL = "teacher@gmail.com";
  ┣ 📜 style.css           # 반응형 디자인, 테마, 애니메이션 스타일
  ┣ 📜 app.js              # Firebase 연동, 드래그/스크롤 알고리즘, PDF 엔진 등 핵심 비즈니스 로직
  ┣ 📜 database.rules.json # Realtime Database 보안 규칙 (콘솔에 게시하거나 CLI로 배포)
- ┣ 📜 storage.rules       # Firebase Storage 보안 규칙
+ ┣ 📜 storage.rules       # Firebase Storage 보안 규칙 (Blaze 전환 시 사용, 현재는 미사용)
  ┗ 📜 firebase.json       # 규칙 파일 배포 설정
 ```
 
