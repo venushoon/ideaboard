@@ -757,7 +757,7 @@ function initBoardApp() {
           spacer.style.position = 'absolute'; spacer.style.width = '1px'; spacer.style.visibility = 'hidden';
           board.appendChild(spacer);
       }
-      spacer.style.top = `${Math.max(...colHeights) + 80}px`; 
+      spacer.style.top = `${Math.max(...colHeights) + 140}px`;
   };
 
   window.updateCanvasSize = () => {
@@ -1312,24 +1312,33 @@ function initBoardApp() {
     const p = allPostsData[id];
     if (!p) return;
     const uid = currentUserUid || myDeviceId;
-    
+
     if (typeof p.likes === 'number') {
-        if (likedPosts[id]) { window.showToast('이미 반응을 남겼어요!'); return; }
-        await update(ref(db, `boards/${currentBoardId}/posts/${id}`), { likes: p.likes + 1 });
-        likedPosts[id] = true;
-        try { localStorage.setItem('liked_posts', JSON.stringify(likedPosts)); } catch(e){}
-        animateLikeBtn(id);
+        // 구형 숫자 카운터 형식: 이 기기의 기록(localStorage)으로 토글합니다
+        try {
+            if (likedPosts[id]) {
+                await update(ref(db, `boards/${currentBoardId}/posts/${id}`), { likes: Math.max(0, p.likes - 1) });
+                delete likedPosts[id];
+                window.showToast('반응을 취소했어요.');
+            } else {
+                await update(ref(db, `boards/${currentBoardId}/posts/${id}`), { likes: p.likes + 1 });
+                likedPosts[id] = true;
+                animateLikeBtn(id);
+            }
+            try { localStorage.setItem('liked_posts', JSON.stringify(likedPosts)); } catch(e){}
+        } catch (e) { console.error(e); window.showToast('반응 처리에 실패했어요.'); }
     } else {
         const likeRef = ref(db, `boards/${currentBoardId}/posts/${id}/likes/${uid}`);
         try {
             const snap = await get(likeRef);
             if (snap.exists()) {
-                window.showToast('이미 반응을 남겼어요!');
+                await remove(likeRef); // 다시 누르면 반응 취소
+                window.showToast('반응을 취소했어요.');
             } else {
                 await set(likeRef, true);
                 animateLikeBtn(id);
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { console.error(e); window.showToast('반응 처리에 실패했어요.'); }
     }
   };
   
