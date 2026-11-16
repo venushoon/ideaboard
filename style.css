@@ -402,3 +402,30 @@ input:checked + .slider:before { transform: translateX(20px); }
 .comment-del { background: none; border: none; color: var(--ink-3); cursor: pointer; font-size: 0.72rem; padding: 0 0 0 6px; opacity: 0.35; transition: 0.15s; vertical-align: baseline; }
 .comment-item:hover .comment-del { opacity: 1; }
 .comment-del:hover { color: var(--accent); }
+
+/* ─────────────────────────────────────────────
+   공유창 업그레이드 (주소·참여 코드·큰 QR 제시 모드)
+───────────────────────────────────────────── */
+.share-info { background:#f9fafb; border:1px solid var(--line); border-radius: var(--r-md); padding: 14px 16px; margin-bottom: 16px; width:100%; box-sizing: border-box; }
+.share-info-label { font-size: .78rem; font-weight: 800; color: var(--ink-3); }
+.share-info-sub { font-weight: 600; margin-left: 4px; opacity: .75; }
+.share-url-row { display:flex; align-items:center; gap:8px; margin-top:4px; }
+.share-url { flex:1; font-size:.82rem; color:var(--ink-2); word-break: break-all; line-height:1.35; }
+.share-copy-mini { flex-shrink:0; background: var(--primary); color:#fff; border:none; padding:6px 14px; border-radius:100px; font-weight:800; font-size:.78rem; cursor:pointer; }
+.share-copy-mini:hover { background:#7f1d1d; }
+.share-code { font-size: 1.7rem; font-weight: 900; letter-spacing: .35em; color: var(--ink); margin-top: 2px; }
+#qrBox svg { width: 180px; height: 180px; }
+.qr-big-btn { margin-top: 14px; background: var(--ink); color: #fff; width: 100%; }
+.qr-big-btn:hover { background: #1f2937; }
+
+.qr-present { position: fixed; inset: 0; z-index: 100000; background: #fdfbf7; display: none; align-items: center; justify-content: center; cursor: pointer; overflow-y: auto; }
+.qr-present-inner { text-align: center; padding: 24px; max-width: 94vw; }
+.qr-present-title { font-family: 'Noto Serif KR', serif; font-size: clamp(1.6rem, 4.5vh, 2.6rem); font-weight: 900; margin: 0 0 6px; color: var(--ink); }
+.qr-present-sub { color: var(--ink-2); font-size: clamp(.95rem, 2.2vh, 1.15rem); margin: 0 0 20px; font-weight: 600; }
+.qr-present-box { background:#fff; display:inline-block; padding: 18px; border-radius: 20px; box-shadow: var(--sh-md); border:1px solid var(--line); line-height: 0; }
+.qr-present-box svg { width: min(46vh, 78vw); height: min(46vh, 78vw); }
+.qr-present-code-label { margin-top: 20px; font-size:.85rem; font-weight:800; color: var(--ink-3); }
+.qr-present-code { font-size: clamp(2rem, 6vh, 3.2rem); font-weight: 900; letter-spacing: .4em; text-indent: .4em; color: var(--primary); line-height: 1.15; }
+.qr-present-url { margin-top: 10px; font-size: .9rem; color: var(--ink-3); word-break: break-all; }
+.qr-present-hint { margin-top: 16px; font-size: .8rem; color: var(--ink-3); opacity: .7; }
+.qr-present-close { position: absolute; top: 18px; right: 22px; background: rgba(0,0,0,.05); border:none; width:44px; height:44px; border-radius:50%; font-size:1.2rem; cursor:pointer; color: var(--ink-2); z-index: 1; }
