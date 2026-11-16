@@ -1,0 +1,20 @@
+rules_version = '2';
+
+// 아이디어 보드 첨부파일 (boards/{boardId}/{timestamp}_{fileName})
+// - 읽기: 로그인(구글/익명)한 참여자만. 단, 앱은 다운로드 URL(token 포함)로 이미지를 표시하므로
+//   URL을 아는 경우의 접근은 Firebase 다운로드 토큰이 별도로 통제합니다.
+// - 쓰기: 로그인한 참여자만, 3MB 미만 (앱에서 2MB로 먼저 거릅니다)
+// - 삭제: 로그인한 사용자 (게시물 삭제 시 파일 정리용)
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /boards/{boardId}/{fileName} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+                            && request.resource.size < 3 * 1024 * 1024;
+      allow delete: if request.auth != null;
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
