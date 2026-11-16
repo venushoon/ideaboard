@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 뒤 포스트잇 (핑크) -->
+  <rect x="15" y="9" width="42" height="42" rx="7" fill="#F6A6B2" transform="rotate(8 36 30)"/>
+  <!-- 앞 포스트잇 (노랑) -->
+  <g transform="rotate(-5 30 34)">
+    <rect x="9" y="13" width="42" height="42" rx="7" fill="#FFD93D"/>
+    <path d="M39 55 L51 43 L51 55 Z" fill="#E3AC2E"/>
+    <rect x="18" y="31" width="24" height="4.6" rx="2.3" fill="rgba(70,45,0,0.45)"/>
+    <rect x="18" y="40" width="15" height="4.6" rx="2.3" fill="rgba(70,45,0,0.32)"/>
+    <!-- 압정 -->
+    <circle cx="30" cy="17" r="5.6" fill="#991B1B"/>
+    <circle cx="28.1" cy="15.1" r="1.9" fill="#F0A3A3"/>
+  </g>
+</svg>
