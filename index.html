@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css">
 <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
@@ -22,7 +23,7 @@
         window.addEventListener('touchmove', function() {}, {passive: false});
     });
 </script>
-<link rel="stylesheet" href="style.css?v=20261116-3">
+<link rel="stylesheet" href="style.css?v=20261116-4">
 </head>
 <body>
 
@@ -84,7 +85,7 @@
     </div>
     <div class="nav-right">
       <button class="nav-back" onclick="exitToLobby()" title="보드 목록으로">← 나가기</button>
-      <button class="btn-share" onclick="openModal('shareModal')">📤 공유</button>
+      <button class="btn-share" onclick="openShareModal()">📤 공유</button>
       <button class="nav-icon-btn" onclick="openSidebar()" title="설정">⚙️</button>
     </div>
   </nav>
@@ -224,6 +225,16 @@
             <button class="modal-close" onclick="closeModal('shareModal')">✕</button>
         </div>
         
+        <div class="share-info">
+            <div class="share-info-label">보드 주소</div>
+            <div class="share-url-row">
+                <span class="share-url" id="shareUrlText"></span>
+                <button class="share-copy-mini" onclick="copyShareUrl()">복사</button>
+            </div>
+            <div class="share-info-label" style="margin-top:14px;">참여 코드 <span class="share-info-sub">QR이 안 될 때 입력하세요</span></div>
+            <div class="share-code" id="shareRoomCode">······</div>
+        </div>
+
         <div class="share-list">
             <button class="share-action-btn" onclick="copyLink()">
                 <div class="share-action-left">
@@ -267,9 +278,24 @@
         </div>
 
         <div id="qrContainer">
-            <img id="qrImg" src="" alt="QR Code">
+            <div id="qrBox"></div>
+            <img id="qrImg" src="" alt="QR Code" style="display:none;">
             <p>카메라로 QR 코드를 스캔하여 접속</p>
+            <button class="btn qr-big-btn" onclick="showQRPresent()">🔍 크게 보기 (교실 화면용)</button>
         </div>
+    </div>
+</div>
+
+<div class="qr-present" id="qrPresent" onclick="closeQRPresent()">
+    <button class="qr-present-close" onclick="closeQRPresent()">✕</button>
+    <div class="qr-present-inner">
+        <h2 class="qr-present-title" id="qrPresentTitle">아이디어 보드</h2>
+        <p class="qr-present-sub">휴대폰·태블릿 카메라로 QR 코드를 찍어 입장하세요</p>
+        <div class="qr-present-box" id="qrPresentBox"></div>
+        <div class="qr-present-code-label">참여 코드</div>
+        <div class="qr-present-code" id="qrPresentCode">······</div>
+        <div class="qr-present-url" id="qrPresentUrl"></div>
+        <p class="qr-present-hint">아무 곳이나 누르면 닫힙니다</p>
     </div>
 </div>
 
@@ -377,6 +403,6 @@
 </aside>
 
 <div id="toast"></div>
-<script type="module" src="app.js?v=20261116-3"></script>
+<script type="module" src="app.js?v=20261116-4"></script>
 </body>
 </html>
