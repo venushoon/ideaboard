@@ -48,8 +48,8 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 /* ─────────────────────────────────────────────
    LOGIN VIEW
 ───────────────────────────────────────────── */
-#loginView { 
-    width: 100vw; height: 100vh; 
+#loginView {
+    width: 100vw; height: 100vh; height: 100dvh;
     flex-direction: column; align-items: center; justify-content: center; 
     background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); 
     position: fixed; top: 0; left: 0; z-index: 99999; 
@@ -76,7 +76,7 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 /* ─────────────────────────────────────────────
    LOBBY VIEW (보드 목록)
 ───────────────────────────────────────────── */
-#lobbyView { width:100vw; height:100vh; display:none; flex-direction:column; background: var(--cream); overflow: hidden; position: fixed; inset: 0;}
+#lobbyView { width:100vw; height:100vh; height:100dvh; display:none; flex-direction:column; background: var(--cream); overflow: hidden; position: fixed; inset: 0;}
 
 .lobby-header { 
   background: rgba(255,255,255,0.9); 
@@ -127,7 +127,7 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 /* ─────────────────────────────────────────────
    APP VIEW (TOP NAV & BOARD) 
 ───────────────────────────────────────────── */
-#appView { display:none; flex-direction:column; height:100vh; position:relative; }
+#appView { display:none; flex-direction:column; height:100vh; height:100dvh; position:relative; }
 
 .top-nav {
   position:absolute; top:0; left:0; right:0;
@@ -150,21 +150,21 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 .nav-icon-btn:hover { background: var(--line); color:var(--ink);}
 
 #board {
-  width:100vw; height:100vh; position:relative; overflow:hidden;
+  width:100vw; height:100vh; height:100dvh; position:relative; overflow:hidden;
   background-image: radial-gradient(circle, rgba(0,0,0,0.06) 1.5px, transparent 1.5px); background-size: 30px 30px; transition: background-color .3s;
 }
 
 /* 🌟 동적 스크롤 충돌 제어: 캔버스는 이동 자유, 나머지는 스크롤 허용 */
-#board[data-layout="canvas"] { touch-action: none !important; overflow: auto; min-width: 100vw; min-height: 100vh; -webkit-overflow-scrolling: touch; }
-#board[data-layout="wall"] { touch-action: pan-y !important; display: block; padding: 0; overflow-y: auto !important; overflow-x: hidden !important; height: 100vh; -webkit-overflow-scrolling: touch;}
-#board[data-layout="column"] { touch-action: pan-x pan-y !important; display: flex; flex-direction: row; gap: 24px; align-items: flex-start; padding: 130px 32px 40px; overflow-x: auto; overflow-y: hidden; height: 100vh; -webkit-overflow-scrolling: touch;}
+#board[data-layout="canvas"] { touch-action: none !important; overflow: auto; min-width: 100vw; min-height: 100vh; min-height: 100dvh; -webkit-overflow-scrolling: touch; }
+#board[data-layout="wall"] { touch-action: pan-y !important; display: block; padding: 0; overflow-y: auto !important; overflow-x: hidden !important; height: 100vh; height: 100dvh; -webkit-overflow-scrolling: touch;}
+#board[data-layout="column"] { touch-action: pan-x pan-y !important; display: flex; flex-direction: row; gap: 24px; align-items: flex-start; padding: 130px 32px 40px; overflow-x: auto; overflow-y: hidden; height: 100vh; height: 100dvh; -webkit-overflow-scrolling: touch;}
 
 #board[data-layout="canvas"] .post-it { position: absolute; }
 #board[data-layout="canvas"] .post-img { max-height: 150px; }
 #board[data-layout="wall"] .post-it { position: absolute !important; transform: none !important; width: 280px !important; cursor: grab; margin: 0 !important; transition: left 0.3s var(--ease-spring), top 0.3s var(--ease-spring), box-shadow 0.15s; }
 #board[data-layout="column"] .post-it { position:relative !important; left:auto !important; top:auto !important; transform:none !important; width:100%; cursor:grab; margin-bottom: 16px; flex-shrink: 0;}
 
-.column-wrap { width: 320px; flex-shrink:0; background: transparent; display: flex; flex-direction: column; height: calc(100vh - 160px); }
+.column-wrap { width: 320px; flex-shrink:0; background: transparent; display: flex; flex-direction: column; height: calc(100vh - 160px); height: calc(100dvh - 160px); }
 .column-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px; padding: 6px 12px; background: rgba(255,255,255,0.7); backdrop-filter: blur(12px); border-radius: var(--r-md); border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 10px rgba(0,0,0,0.03); flex-shrink: 0; }
 .column-title-input { font-family: inherit; font-weight: 800; font-size:1.05rem; color: var(--ink); background:transparent; border:none; outline:none; flex:1; padding: 4px 0;}
 .column-title-input:focus { border-bottom: 2px solid var(--ink); }
@@ -174,7 +174,7 @@ body.post-order-top #board[data-layout="column"] .column-body { flex-direction: 
 .column-add-post { width: 100%; padding: 12px; background: transparent; border: 2px dashed rgba(0,0,0,0.15); border-radius: var(--r-md); font-size: 0.95rem; color: var(--ink-3); font-weight:800; cursor: pointer; transition: 0.2s; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; flex-shrink:0;}
 .column-add-post:hover { background: rgba(255,255,255,0.6); color: var(--ink); border-color: rgba(0,0,0,0.3);}
 
-.column-body { display:flex; flex-direction:column; flex: 1; min-height: 0; overflow-y:auto; overflow-x:hidden; padding: 4px; -webkit-overflow-scrolling: touch; }
+.column-body { display:flex; flex-direction:column; flex: 1; min-height: 0; overflow-y:auto; overflow-x:hidden; padding: 4px 4px calc(20px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
 .column-body::-webkit-scrollbar { width:5px; }
 .column-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius:5px; }
 
