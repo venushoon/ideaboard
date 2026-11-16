@@ -106,7 +106,73 @@ window.closeSidebar = () => { document.getElementById('sbOverlay').classList.rem
 window.openImageViewer = url => { document.getElementById('imageViewerImg').src = url; window.openModal('imageViewerModal'); };
 
 window.copyLink = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); window.closeModal('shareModal'); };
-window.showQR = () => { document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`; document.getElementById('qrContainer').style.display = 'block'; };
+window.copyShareUrl = () => { navigator.clipboard.writeText(window.location.href).then(() => window.showToast("링크 복사 완료!")); };
+
+/* QR은 외부 서비스 없이 페이지 안에서 직접 생성합니다 (qrcode-generator) */
+window.makeQR = (targetEl, cellSize) => {
+    if (typeof window.qrcode !== 'function') return false;
+    try {
+        const qr = window.qrcode(0, 'M');
+        qr.addData(window.location.href);
+        qr.make();
+        targetEl.innerHTML = qr.createSvgTag({ cellSize: cellSize || 6, margin: 4, scalable: true });
+        return true;
+    } catch (e) { console.error(e); return false; }
+};
+
+window.showQR = () => {
+    const box = document.getElementById('qrBox');
+    const img = document.getElementById('qrImg');
+    if (window.makeQR(box, 5)) {
+        img.style.display = 'none';
+    } else {
+        // 라이브러리를 불러오지 못한 경우에만 외부 서비스로 대체합니다
+        box.innerHTML = '';
+        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`;
+        img.style.display = 'block';
+    }
+    document.getElementById('qrContainer').style.display = 'block';
+};
+
+window.currentRoomCode = '';
+window.openShareModal = async () => {
+    document.getElementById('shareUrlText').textContent = window.location.href;
+    window.openModal('shareModal');
+    if (!window.currentRoomCode && currentBoardId) {
+        try {
+            const snap = await get(ref(db, `board_meta/${currentBoardId}/roomCode`));
+            if (snap.exists()) window.currentRoomCode = snap.val();
+        } catch (e) { console.error(e); }
+    }
+    document.getElementById('shareRoomCode').textContent = window.currentRoomCode || '—';
+};
+
+window.showQRPresent = () => {
+    document.getElementById('qrPresentTitle').textContent = document.querySelector('.board-title-text')?.textContent || '아이디어 보드';
+    document.getElementById('qrPresentUrl').textContent = window.location.href;
+    document.getElementById('qrPresentCode').textContent = window.currentRoomCode || '—';
+    const box = document.getElementById('qrPresentBox');
+    if (!window.makeQR(box, 10)) {
+        box.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=${encodeURIComponent(window.location.href)}" alt="QR Code" style="width:min(46vh,78vw); display:block;">`;
+    }
+    window.closeModal('shareModal');
+    const el = document.getElementById('qrPresent');
+    el.style.display = 'flex';
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+};
+
+window.closeQRPresent = () => {
+    const el = document.getElementById('qrPresent');
+    if (el) el.style.display = 'none';
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+};
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const el = document.getElementById('qrPresent');
+        if (el && el.style.display !== 'none') window.closeQRPresent();
+    }
+});
 
 /* ── 4-1. 이미지 캡처 ── */
 window.downloadImage = async () => {
